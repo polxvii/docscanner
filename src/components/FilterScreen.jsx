@@ -3,7 +3,6 @@ import { FILTERS, applyFilter, makeThumbnail } from '../lib/imaging.js';
 import './FilterScreen.css';
 
 export default function FilterScreen({
-  cv,
   image,
   initialFilter = 'original',
   onConfirm,
@@ -13,15 +12,13 @@ export default function FilterScreen({
   const [previews, setPreviews] = useState({});
   const [busy, setBusy] = useState(false);
 
-  // Build small previews for each filter once.
   useEffect(() => {
-    if (!cv) return;
     let alive = true;
     (async () => {
       const small = await makeThumbnail(image, 700);
       const out = {};
       for (const f of FILTERS) {
-        out[f.id] = await applyFilter(cv, small, f.id);
+        out[f.id] = await applyFilter(small, f.id);
         if (!alive) return;
       }
       if (alive) setPreviews(out);
@@ -29,12 +26,12 @@ export default function FilterScreen({
     return () => {
       alive = false;
     };
-  }, [cv, image]);
+  }, [image]);
 
   const confirm = async () => {
     setBusy(true);
     try {
-      const full = await applyFilter(cv, image, selected);
+      const full = await applyFilter(image, selected);
       onConfirm(selected, full);
     } finally {
       setBusy(false);
@@ -48,7 +45,7 @@ export default function FilterScreen({
           ‹
         </button>
         <h2>Filter</h2>
-        <button className="btn primary" onClick={confirm} disabled={busy || !cv}>
+        <button className="btn primary" onClick={confirm} disabled={busy}>
           {busy ? '…' : 'Done'}
         </button>
       </div>

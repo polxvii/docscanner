@@ -45,14 +45,45 @@
   pointer-events: none;
 }
 
-/* Hidden work canvas used only for downscaled detection. */
-.det-canvas {
+/* Static framing guide (decorative brackets). */
+.frame-guide {
   position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
+  inset: 8%;
   pointer-events: none;
-  left: -9999px;
+}
+.frame-guide .corner {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(255, 255, 255, 0.85);
+}
+.frame-guide .tl {
+  top: 0;
+  left: 0;
+  border-right: none;
+  border-bottom: none;
+  border-radius: 6px 0 0 0;
+}
+.frame-guide .tr {
+  top: 0;
+  right: 0;
+  border-left: none;
+  border-bottom: none;
+  border-radius: 0 6px 0 0;
+}
+.frame-guide .br {
+  bottom: 0;
+  right: 0;
+  border-left: none;
+  border-top: none;
+  border-radius: 0 0 6px 0;
+}
+.frame-guide .bl {
+  bottom: 0;
+  left: 0;
+  border-right: none;
+  border-top: none;
+  border-radius: 0 0 0 6px;
 }
 
 .captured-preview {

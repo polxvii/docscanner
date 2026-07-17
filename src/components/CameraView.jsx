@@ -1,83 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { detectDocument } from '../lib/detectDocument.js';
-import { averageCorners, contentRect, normToDisplay } from '../lib/geometry.js';
 import './CameraView.css';
 
-// ~12 fps detection cadence — never per-frame, never full-res.
-const DETECT_INTERVAL_MS = 1000 / 12;
-// Downscaled detection frame width (px). Detection runs on this only.
-const DETECT_WIDTH = 300;
-// Moving-average window for corner smoothing (frames).
-const SMOOTH_WINDOW = 5;
-// Consecutive misses before the overlay is hidden.
-const MISS_LIMIT = 4;
-
-/** Draw the green quad overlay in DISPLAY space from normalised corners. */
-function drawOverlay(video, overlay, corners) {
-  const cssW = video.clientWidth;
-  const cssH = video.clientHeight;
-  if (!cssW || !cssH) return;
-  const dpr = window.devicePixelRatio || 1;
-  const bw = Math.round(cssW * dpr);
-  const bh = Math.round(cssH * dpr);
-  if (overlay.width !== bw || overlay.height !== bh) {
-    overlay.width = bw;
-    overlay.height = bh;
-  }
-  overlay.style.width = `${cssW}px`;
-  overlay.style.height = `${cssH}px`;
-
-  const ctx = overlay.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, cssW, cssH);
-  if (!corners) return;
-
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
-  if (!vw || !vh) return;
-
-  const r = contentRect(cssW, cssH, vw, vh);
-  const pts = corners.map((c) => normToDisplay(c, r));
-
-  ctx.beginPath();
-  pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(0, 230, 118, 0.15)';
-  ctx.fill();
-  ctx.lineWidth = 3;
-  ctx.lineJoin = 'round';
-  ctx.strokeStyle = '#00e676';
-  ctx.stroke();
-
-  for (const p of pts) {
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
-    ctx.fillStyle = '#00e676';
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#0b3d24';
-    ctx.stroke();
-  }
-}
-
-export default function CameraView({
-  cvStatus,
-  cv,
-  cvError,
-  onRetryCv,
-  onCapture,
-  onBack,
-}) {
+export default function CameraView({ onCapture, onBack }) {
   const videoRef = useRef(null);
-  const overlayRef = useRef(null);
-  const detCanvasRef = useRef(null);
-  const smoothedRef = useRef(null); // latest smoothed normalised corners
-
   const [camReady, setCamReady] = useState(false);
   const [camError, setCamError] = useState(null);
-  const [detecting, setDetecting] = useState(false);
 
-  // --- Camera lifecycle -----------------------------------------------------
   useEffect(() => {
     let stream = null;
     let cancelled = false;
@@ -124,68 +52,6 @@ export default function CameraView({
     };
   }, []);
 
-  // --- Detection loop -------------------------------------------------------
-  useEffect(() => {
-    if (cvStatus !== 'ready' || !cv || !camReady) return;
-
-    let raf = 0;
-    let lastDetect = 0;
-    let misses = 0;
-    const buffer = [];
-
-    const loop = (t) => {
-      raf = requestAnimationFrame(loop);
-      const video = videoRef.current;
-      const overlay = overlayRef.current;
-      const det = detCanvasRef.current;
-      if (!video || !overlay || !det || video.readyState < 2) return;
-
-      if (t - lastDetect >= DETECT_INTERVAL_MS) {
-        lastDetect = t;
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        if (vw && vh) {
-          const dW = DETECT_WIDTH;
-          const dH = Math.round((dW * vh) / vw);
-          if (det.width !== dW || det.height !== dH) {
-            det.width = dW;
-            det.height = dH;
-          }
-          const dctx = det.getContext('2d', { willReadFrequently: true });
-          dctx.drawImage(video, 0, 0, dW, dH);
-
-          let corners = null;
-          try {
-            corners = detectDocument(cv, det);
-          } catch {
-            corners = null;
-          }
-
-          if (corners) {
-            buffer.push(corners);
-            if (buffer.length > SMOOTH_WINDOW) buffer.shift();
-            misses = 0;
-            smoothedRef.current = averageCorners(buffer);
-            setDetecting(true);
-          } else {
-            misses++;
-            if (misses > MISS_LIMIT) {
-              buffer.length = 0;
-              smoothedRef.current = null;
-              setDetecting(false);
-            }
-          }
-        }
-      }
-
-      drawOverlay(video, overlay, smoothedRef.current);
-    };
-
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [cvStatus, cv, camReady]);
-
-  // --- Capture / upload -----------------------------------------------------
   const capture = useCallback(() => {
     const video = videoRef.current;
     if (!video || !video.videoWidth) return;
@@ -193,8 +59,7 @@ export default function CameraView({
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
-    const url = canvas.toDataURL('image/jpeg', 0.95);
-    onCapture?.(url, smoothedRef.current);
+    onCapture?.(canvas.toDataURL('image/jpeg', 0.95));
   }, [onCapture]);
 
   const onUpload = useCallback(
@@ -202,7 +67,7 @@ export default function CameraView({
       const file = e.target.files?.[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = () => onCapture?.(String(reader.result), null);
+      reader.onload = () => onCapture?.(String(reader.result));
       reader.readAsDataURL(file);
       e.target.value = '';
     },
@@ -226,36 +91,19 @@ export default function CameraView({
           muted
           autoPlay
         />
-        <canvas ref={overlayRef} className="camera-overlay" />
-        <canvas ref={detCanvasRef} className="det-canvas" />
 
-        {(cvStatus === 'loading' || cvStatus === 'idle') && (
-          <div className="badge badge-top">Loading detector…</div>
-        )}
-        {cvStatus === 'ready' && camReady && (
-          <div className={`badge badge-top ${detecting ? 'ok' : 'muted'}`}>
-            {detecting ? 'Document detected' : 'Point at a document'}
-          </div>
-        )}
-
-        {cvStatus === 'error' && (
-          <div className="overlay-message">
-            <p className="strong">Couldn’t load the document detector</p>
-            <p className="dim">{cvError}</p>
-            <p className="dim">
-              You can still capture or upload — auto edge-detection just won’t
-              draw.
-            </p>
-            {onRetryCv && (
-              <button
-                className="btn primary"
-                style={{ marginTop: 10 }}
-                onClick={onRetryCv}
-              >
-                Retry
-              </button>
-            )}
-          </div>
+        {camReady && !camError && (
+          <>
+            <div className="frame-guide" aria-hidden="true">
+              <span className="corner tl" />
+              <span className="corner tr" />
+              <span className="corner br" />
+              <span className="corner bl" />
+            </div>
+            <div className="badge badge-top muted">
+              Fit the document in view, then capture
+            </div>
+          </>
         )}
 
         {camError && <CameraError kind={camError} />}

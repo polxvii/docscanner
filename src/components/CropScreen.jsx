@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { detectDocument } from '../lib/detectDocument.js';
 import {
+  autoDetectCorners,
   loadImage,
   rotateImage,
   rotateCornersNorm,
@@ -17,19 +17,43 @@ const EDGES = [
   [3, 0],
 ];
 
-export default function CropScreen({ cv, image, initialCorners, onConfirm, onCancel }) {
+const INSET_CORNERS = [
+  { x: 0.08, y: 0.08 },
+  { x: 0.92, y: 0.08 },
+  { x: 0.92, y: 0.92 },
+  { x: 0.08, y: 0.92 },
+];
+
+export default function CropScreen({ image, initialCorners, onConfirm, onCancel }) {
   const stageRef = useRef(null);
   const dragRef = useRef(null);
 
   const [base, setBase] = useState(image);
   const [corners, setCorners] = useState(
-    initialCorners && initialCorners.length === 4 ? initialCorners : FULL_CORNERS
+    initialCorners && initialCorners.length === 4 ? initialCorners : INSET_CORNERS
   );
-  const [natural, setNatural] = useState(null); // {w,h}
+  const [natural, setNatural] = useState(null);
   const [stage, setStage] = useState({ w: 0, h: 0 });
   const [busy, setBusy] = useState(false);
 
-  // Natural size whenever the base image changes.
+  // On first open (fresh capture), try to auto-detect the document.
+  useEffect(() => {
+    if (initialCorners && initialCorners.length === 4) return;
+    let alive = true;
+    (async () => {
+      try {
+        const det = await autoDetectCorners(image);
+        if (alive && det) setCorners(det);
+      } catch {
+        /* keep inset default */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     let alive = true;
     loadImage(base).then((img) => {
@@ -40,12 +64,10 @@ export default function CropScreen({ cv, image, initialCorners, onConfirm, onCan
     };
   }, [base]);
 
-  // Track stage size.
   useLayoutEffect(() => {
     const el = stageRef.current;
     if (!el) return;
-    const update = () =>
-      setStage({ w: el.clientWidth, h: el.clientHeight });
+    const update = () => setStage({ w: el.clientWidth, h: el.clientHeight });
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -75,9 +97,7 @@ export default function CropScreen({ cv, image, initialCorners, onConfirm, onCan
       e.preventDefault();
       const n = normFromEvent(e);
       if (drag.type === 'corner') {
-        setCorners((prev) =>
-          prev.map((c, i) => (i === drag.index ? n : c))
-        );
+        setCorners((prev) => prev.map((c, i) => (i === drag.index ? n : c)));
       } else {
         const dx = n.x - drag.start.x;
         const dy = n.y - drag.start.y;
@@ -86,10 +106,7 @@ export default function CropScreen({ cv, image, initialCorners, onConfirm, onCan
           prev.map((c, i) => {
             if (i !== a && i !== b) return c;
             const s = drag.snapshot[i];
-            return {
-              x: clamp(s.x + dx, 0, 1),
-              y: clamp(s.y + dy, 0, 1),
-            };
+            return { x: clamp(s.x + dx, 0, 1), y: clamp(s.y + dy, 0, 1) };
           })
         );
       }
@@ -122,19 +139,12 @@ export default function CropScreen({ cv, image, initialCorners, onConfirm, onCan
   const autoCrop = useCallback(async () => {
     setBusy(true);
     try {
-      const img = await loadImage(base);
-      const dW = Math.min(500, img.naturalWidth);
-      const dH = Math.round((dW * img.naturalHeight) / img.naturalWidth);
-      const c = document.createElement('canvas');
-      c.width = dW;
-      c.height = dH;
-      c.getContext('2d').drawImage(img, 0, 0, dW, dH);
-      const det = detectDocument(cv, c);
+      const det = await autoDetectCorners(base);
       setCorners(det || FULL_CORNERS);
     } finally {
       setBusy(false);
     }
-  }, [base, cv]);
+  }, [base]);
 
   const rotate = useCallback(
     async (deg) => {
@@ -153,14 +163,13 @@ export default function CropScreen({ cv, image, initialCorners, onConfirm, onCan
   const confirm = useCallback(async () => {
     setBusy(true);
     try {
-      const out = await warpPerspective(cv, base, corners);
+      const out = await warpPerspective(base, corners);
       onConfirm(out, corners, base);
     } finally {
       setBusy(false);
     }
-  }, [cv, base, corners, onConfirm]);
+  }, [base, corners, onConfirm]);
 
-  // Handle positions in stage px.
   const toPx = (c) => ({ x: rect.x + c.x * rect.w, y: rect.y + c.y * rect.h });
 
   return (
@@ -170,7 +179,7 @@ export default function CropScreen({ cv, image, initialCorners, onConfirm, onCan
           ‹
         </button>
         <h2>Crop &amp; adjust</h2>
-        <button className="btn primary" onClick={confirm} disabled={busy || !cv}>
+        <button className="btn primary" onClick={confirm} disabled={busy}>
           Confirm
         </button>
       </div>
@@ -182,12 +191,7 @@ export default function CropScreen({ cv, image, initialCorners, onConfirm, onCan
               className="crop-image"
               src={base}
               alt="To crop"
-              style={{
-                left: rect.x,
-                top: rect.y,
-                width: rect.w,
-                height: rect.h,
-              }}
+              style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
             />
             <svg
               className="crop-svg"
@@ -196,10 +200,12 @@ export default function CropScreen({ cv, image, initialCorners, onConfirm, onCan
               style={{ pointerEvents: 'none' }}
             >
               <polygon
-                points={corners.map((c) => {
-                  const p = toPx(c);
-                  return `${p.x},${p.y}`;
-                }).join(' ')}
+                points={corners
+                  .map((c) => {
+                    const p = toPx(c);
+                    return `${p.x},${p.y}`;
+                  })
+                  .join(' ')}
                 fill="rgba(0,230,118,0.12)"
                 stroke="#00e676"
                 strokeWidth="2"
@@ -209,13 +215,11 @@ export default function CropScreen({ cv, image, initialCorners, onConfirm, onCan
             {EDGES.map(([a, b], i) => {
               const pa = toPx(corners[a]);
               const pb = toPx(corners[b]);
-              const mx = (pa.x + pb.x) / 2;
-              const my = (pa.y + pb.y) / 2;
               return (
                 <div
                   key={'e' + i}
                   className="handle edge"
-                  style={{ left: mx, top: my }}
+                  style={{ left: (pa.x + pb.x) / 2, top: (pa.y + pb.y) / 2 }}
                   onPointerDown={startEdgeDrag(i)}
                 />
               );
@@ -242,7 +246,7 @@ export default function CropScreen({ cv, image, initialCorners, onConfirm, onCan
       </div>
 
       <div className="toolbar">
-        <button className="btn small" onClick={autoCrop} disabled={busy || !cv}>
+        <button className="btn small" onClick={autoCrop} disabled={busy}>
           Auto Crop
         </button>
         <button

@@ -10,7 +10,7 @@ import SignatureManager from './SignatureManager.jsx';
 import ExportDialog from './ExportDialog.jsx';
 import './PageDetail.css';
 
-export default function PageDetail({ doc, page, cv, onBack, onReEdit }) {
+export default function PageDetail({ doc, page, onBack, onReEdit }) {
   const { saveDocument } = useStore();
   const stageRef = useRef(null);
   const [stage, setStage] = useState({ w: 0, h: 0 });

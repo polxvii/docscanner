@@ -1,5 +1,4 @@
 import { useCallback, useState } from 'react';
-import { useOpenCV } from './hooks/useOpenCV.js';
 import { useStore } from './store/StoreContext.jsx';
 import { makeThumbnail } from './lib/imaging.js';
 import { uid } from './lib/id.js';
@@ -11,13 +10,10 @@ import DocumentEditor from './components/DocumentEditor.jsx';
 import './App.css';
 
 export default function App() {
+  const { documents, createDocument, saveDocument } = useStore();
+
   const [nav, setNav] = useState({ name: 'library' });
   const [draft, setDraft] = useState(null);
-
-  // Only load OpenCV once the user is in the scan pipeline.
-  const needsCv = ['camera', 'crop', 'filter'].includes(nav.name);
-  const { status: cvStatus, cv, error: cvError, retry: retryCv } = useOpenCV(needsCv);
-  const { documents, createDocument, saveDocument } = useStore();
 
   // --- Scan session entry points ---
   const startNewScan = useCallback((folderId) => {
@@ -61,20 +57,14 @@ export default function App() {
   );
 
   // --- Pipeline transitions ---
-  const onCameraCapture = useCallback((image, corners) => {
-    setDraft((d) => ({
-      ...d,
-      originalImage: image,
-      cropCorners: corners || d?.cropCorners,
-    }));
+  const onCameraCapture = useCallback((image) => {
+    setDraft((d) => ({ ...d, originalImage: image }));
     setNav({ name: 'crop' });
   }, []);
 
   const onCropConfirm = useCallback((processed, corners, base) => {
     setDraft((d) => ({
       ...d,
-      // `base` is the (possibly rotated) full-res source — keep it as the
-      // originalImage so re-edit stays non-destructive.
       originalImage: base,
       cropCorners: corners,
       processedImage: processed,
@@ -153,14 +143,7 @@ export default function App() {
     case 'camera':
       return (
         <div className="app">
-          <CameraView
-            cvStatus={cvStatus}
-            cv={cv}
-            cvError={cvError}
-            onRetryCv={retryCv}
-            onCapture={onCameraCapture}
-            onBack={toLibrary}
-          />
+          <CameraView onCapture={onCameraCapture} onBack={toLibrary} />
         </div>
       );
 
@@ -168,7 +151,6 @@ export default function App() {
       return (
         <div className="app">
           <CropScreen
-            cv={cv}
             image={draft.originalImage}
             initialCorners={draft.cropCorners}
             onConfirm={onCropConfirm}
@@ -181,7 +163,6 @@ export default function App() {
       return (
         <div className="app">
           <FilterScreen
-            cv={cv}
             image={draft.processedImage}
             initialFilter={draft.filter}
             onConfirm={commitPage}
@@ -195,7 +176,6 @@ export default function App() {
         <div className="app">
           <DocumentEditor
             documentId={nav.documentId}
-            cv={cv}
             onBack={toLibrary}
             onAddPage={addPageToDoc}
             onReEditPage={(page) => reEditPage(page, nav.documentId)}

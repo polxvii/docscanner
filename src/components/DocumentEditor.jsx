@@ -7,7 +7,6 @@ import './DocumentEditor.css';
 
 export default function DocumentEditor({
   documentId,
-  cv,
   onBack,
   onAddPage,
   onReEditPage,
@@ -43,7 +42,6 @@ export default function DocumentEditor({
       <PageDetail
         doc={doc}
         page={openPage}
-        cv={cv}
         onBack={() => setOpenPageId(null)}
         onReEdit={(page) => onReEditPage(page)}
       />

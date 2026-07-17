@@ -28,26 +28,27 @@ npm run preview   # serve the production build locally
 
 | Library          | How it's loaded         | Used for                          |
 | ---------------- | ----------------------- | --------------------------------- |
-| OpenCV.js        | CDN `<script>` (WASM)   | edge detection + perspective warp |
 | jsPDF            | npm                     | PDF export                        |
 | Tesseract.js     | npm                     | OCR (`tha+eng`)                   |
 | idb              | npm                     | IndexedDB persistence             |
 
-OpenCV.js is loaded from `docs.opencv.org` via a script tag (there is no clean
-ESM build); the other three are bundled npm dependencies. This keeps the heavy
-9MB WASM off the critical bundle while the smaller libs stay version-pinned and
-offline-capable.
+> **No OpenCV.** The perspective crop/warp and all filters are implemented in
+> plain JavaScript / canvas (`src/lib/imaging.js`). The 11MB OpenCV.js WASM
+> proved unreliable to load on real devices (it would hang on "Loading
+> detector"), so it was removed. The app now loads instantly and works on any
+> phone. Trade-off: no live auto edge-detection while aiming — instead you
+> capture, then drag a crop box (seeded by a lightweight pure-JS auto-detect)
+> onto the document.
 
 ## Build phases
 
 Implemented incrementally per the spec. All 11 phases built:
 
 - [x] **1. Project setup** — Vite + React, library loading, app runs.
-- [x] **2. Camera + live detection** — video stream, real-time green quad
-      overlay via OpenCV on downscaled (~300px), throttled (~12fps) frames with
-      corner smoothing. Full-res capture + gallery upload.
-- [x] **3. Crop & adjust** — draggable corner + edge handles, Auto Crop / All /
-      rotate, full-res `getPerspectiveTransform` + `warpPerspective`.
+- [x] **2. Camera + capture** — live video, full-res capture, gallery upload,
+      framing guide. (Live OpenCV auto-detection removed — see note above.)
+- [x] **3. Crop & adjust** — draggable corner + edge handles, Auto Crop (pure-JS
+      detect) / All / rotate, pure-JS perspective warp on confirm.
 - [x] **4. Filters** — Original / Grayscale / B&W (adaptive threshold) / Magic
       Color, with live previews.
 - [x] **5. Page viewer** — multi-page list, reorder (drag + arrows), delete,
