@@ -60,7 +60,14 @@ function drawOverlay(video, overlay, corners) {
   }
 }
 
-export default function CameraView({ cvStatus, cv, cvError, onCapture, onBack }) {
+export default function CameraView({
+  cvStatus,
+  cv,
+  cvError,
+  onRetryCv,
+  onCapture,
+  onBack,
+}) {
   const videoRef = useRef(null);
   const overlayRef = useRef(null);
   const detCanvasRef = useRef(null);
@@ -222,7 +229,7 @@ export default function CameraView({ cvStatus, cv, cvError, onCapture, onBack })
         <canvas ref={overlayRef} className="camera-overlay" />
         <canvas ref={detCanvasRef} className="det-canvas" />
 
-        {cvStatus === 'loading' && (
+        {(cvStatus === 'loading' || cvStatus === 'idle') && (
           <div className="badge badge-top">Loading detector…</div>
         )}
         {cvStatus === 'ready' && camReady && (
@@ -233,11 +240,21 @@ export default function CameraView({ cvStatus, cv, cvError, onCapture, onBack })
 
         {cvStatus === 'error' && (
           <div className="overlay-message">
-            <p>Couldn’t load the document detector.</p>
+            <p className="strong">Couldn’t load the document detector</p>
             <p className="dim">{cvError}</p>
             <p className="dim">
-              You can still capture or upload — detection just won’t draw.
+              You can still capture or upload — auto edge-detection just won’t
+              draw.
             </p>
+            {onRetryCv && (
+              <button
+                className="btn primary"
+                style={{ marginTop: 10 }}
+                onClick={onRetryCv}
+              >
+                Retry
+              </button>
+            )}
           </div>
         )}
 

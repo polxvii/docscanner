@@ -16,7 +16,7 @@ export default function App() {
 
   // Only load OpenCV once the user is in the scan pipeline.
   const needsCv = ['camera', 'crop', 'filter'].includes(nav.name);
-  const { status: cvStatus, cv, error: cvError } = useOpenCV(needsCv);
+  const { status: cvStatus, cv, error: cvError, retry: retryCv } = useOpenCV(needsCv);
   const { documents, createDocument, saveDocument } = useStore();
 
   // --- Scan session entry points ---
@@ -157,6 +157,7 @@ export default function App() {
             cvStatus={cvStatus}
             cv={cv}
             cvError={cvError}
+            onRetryCv={retryCv}
             onCapture={onCameraCapture}
             onBack={toLibrary}
           />
