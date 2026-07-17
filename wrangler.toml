@@ -1,0 +1,6 @@
+# Cloudflare Pages config.
+# With this file, `wrangler pages deploy` and the Git-connected build both know
+# the build output lives in dist/.
+name = "docscanner"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-12-01"

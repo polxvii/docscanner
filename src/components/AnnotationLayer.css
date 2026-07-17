@@ -1,0 +1,57 @@
+.annotation-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* empty areas pass through; annotations opt back in */
+}
+
+.annotation {
+  position: absolute;
+  pointer-events: auto;
+  transform-origin: center center;
+  touch-action: none;
+  cursor: move;
+  display: flex;
+  align-items: center;
+  overflow: visible;
+}
+.annotation img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+.ann-text {
+  white-space: nowrap;
+  line-height: 1;
+  font-family: sans-serif;
+  user-select: none;
+}
+
+.annotation.selected {
+  outline: 1.5px dashed var(--accent);
+  outline-offset: 2px;
+}
+
+.ann-handle {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #08130c;
+  pointer-events: auto;
+  touch-action: none;
+}
+.ann-handle.resize {
+  right: -9px;
+  bottom: -9px;
+  cursor: nwse-resize;
+}
+.ann-handle.rotate {
+  left: 50%;
+  top: -28px;
+  transform: translateX(-50%);
+  background: #fff;
+  cursor: grab;
+}
