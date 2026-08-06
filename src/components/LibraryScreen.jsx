@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useStore } from '../store/StoreContext.jsx';
+import { exportBackupFile, importBackupFile } from '../lib/backup.js';
 import PromptModal from './PromptModal.jsx';
+import Modal from './Modal.jsx';
 import './LibraryScreen.css';
 
 export default function LibraryScreen({
@@ -20,11 +22,13 @@ export default function LibraryScreen({
     deleteDocument,
     duplicateDocument,
     saveDocument,
+    reloadAll,
   } = useStore();
 
   const [selectedFolder, setSelectedFolder] = useState('all'); // 'all' | id
   const [menuId, setMenuId] = useState(null);
   const [prompt, setPrompt] = useState(null); // {type, ...}
+  const [backupOpen, setBackupOpen] = useState(false);
 
   const visibleDocs = documents
     .filter((d) => selectedFolder === 'all' || d.folderId === selectedFolder)
@@ -43,6 +47,14 @@ export default function LibraryScreen({
           onClick={() => setPrompt({ type: 'new-folder' })}
         >
           + Folder
+        </button>
+        <button
+          className="btn small ghost"
+          onClick={() => setBackupOpen(true)}
+          aria-label="Backup and restore"
+          title="Backup & restore"
+        >
+          ⋯
         </button>
       </div>
 
@@ -307,7 +319,102 @@ export default function LibraryScreen({
           onClose={closePrompt}
         />
       )}
+      {backupOpen && (
+        <BackupModal onReload={reloadAll} onClose={() => setBackupOpen(false)} />
+      )}
     </div>
+  );
+}
+
+function BackupModal({ onReload, onClose }) {
+  const [status, setStatus] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [replace, setReplace] = useState(false);
+
+  const doExport = async () => {
+    setBusy(true);
+    try {
+      const c = await exportBackupFile();
+      setStatus(
+        `Saved backup: ${c.documents} docs, ${c.folders} folders, ${c.signatures} signatures.`
+      );
+    } catch (e) {
+      setStatus('Export failed: ' + (e?.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doImport = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const c = await importBackupFile(file, { replace });
+      await onReload();
+      setStatus(
+        `Restored ${c.documents} docs, ${c.folders} folders, ${c.signatures} signatures.`
+      );
+    } catch (e) {
+      setStatus('Restore failed: ' + (e?.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Backup & restore" onClose={onClose}>
+      <p style={{ color: 'var(--text-dim)', fontSize: 13, marginTop: 0 }}>
+        Your scans live only in this browser. Export a backup file to keep them
+        safe or move them to another device.
+      </p>
+      <button
+        className="btn primary"
+        style={{ width: '100%' }}
+        onClick={doExport}
+        disabled={busy}
+      >
+        ⤓ Export backup (.json)
+      </button>
+
+      <hr style={{ border: 0, borderTop: '1px solid #2a323b', margin: '16px 0' }} />
+
+      <label
+        className="row"
+        style={{ margin: '0 0 10px', cursor: 'pointer', gap: 8 }}
+      >
+        <input
+          type="checkbox"
+          checked={replace}
+          onChange={(e) => setReplace(e.target.checked)}
+        />
+        <span style={{ fontSize: 13 }}>
+          Replace everything (otherwise merge)
+        </span>
+      </label>
+      <label className="btn" style={{ width: '100%' }}>
+        ⤒ Restore from backup
+        <input
+          type="file"
+          accept="application/json,.json"
+          hidden
+          disabled={busy}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            doImport(f);
+          }}
+        />
+      </label>
+
+      {status && (
+        <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>{status}</p>
+      )}
+      <div className="actions">
+        <button className="btn" onClick={onClose} disabled={busy}>
+          Close
+        </button>
+      </div>
+    </Modal>
   );
 }
 

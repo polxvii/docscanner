@@ -17,24 +17,26 @@ export function StoreProvider({ children }) {
   const [documents, setDocuments] = useState([]);
   const [signatures, setSignatures] = useState([]);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [f, d, s] = await Promise.all([
-          db.getAllFolders(),
-          db.getAllDocuments(),
-          db.getAllSignatures(),
-        ]);
-        setFolders(f);
-        setDocuments(d);
-        setSignatures(s);
-      } catch (err) {
-        console.error('Failed to load from IndexedDB', err);
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const reloadAll = useCallback(async () => {
+    try {
+      const [f, d, s] = await Promise.all([
+        db.getAllFolders(),
+        db.getAllDocuments(),
+        db.getAllSignatures(),
+      ]);
+      setFolders(f);
+      setDocuments(d);
+      setSignatures(s);
+    } catch (err) {
+      console.error('Failed to load from IndexedDB', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    reloadAll();
+  }, [reloadAll]);
 
   // --- Folders ---
   const createFolder = useCallback(async (name) => {
@@ -160,6 +162,7 @@ export function StoreProvider({ children }) {
       duplicateDocument,
       saveSignature,
       deleteSignature,
+      reloadAll,
     }),
     [
       loading,
@@ -175,6 +178,7 @@ export function StoreProvider({ children }) {
       duplicateDocument,
       saveSignature,
       deleteSignature,
+      reloadAll,
     ]
   );
 
