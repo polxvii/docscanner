@@ -9,8 +9,7 @@ import {
 import { useStore } from '../store/StoreContext.jsx';
 import { contentRect } from '../lib/geometry.js';
 import { loadImage } from '../lib/imaging.js';
-import { applicableAnnotations } from '../lib/exporter.js';
-import { runOcr } from '../lib/ocr.js';
+import { applicableAnnotations } from '../lib/annotations.js';
 import { uid } from '../lib/id.js';
 import AnnotationLayer from './AnnotationLayer.jsx';
 import SignatureManager from './SignatureManager.jsx';
@@ -172,6 +171,7 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
     setOcrBusy(true);
     setOcrProgress(0);
     try {
+      const { runOcr } = await import('../lib/ocr.js'); // lazy: loads Tesseract on demand
       const text = await runOcr(page.processedImage, setOcrProgress);
       const pages = doc.pages.map((p) =>
         p.id === page.id ? { ...p, ocrText: text || '' } : p

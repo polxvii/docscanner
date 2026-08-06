@@ -5,18 +5,14 @@
 import { jsPDF } from 'jspdf';
 import { loadImage } from './imaging.js';
 import { contentRect } from './geometry.js';
+import { applicableAnnotations } from './annotations.js';
+
+export { applicableAnnotations };
 
 const PT_SIZES = {
   a4: [595.28, 841.89],
   letter: [612, 792],
 };
-
-/** Annotations that should render on a given page. Pure. */
-export function applicableAnnotations(doc, page) {
-  return (doc.annotations || []).filter(
-    (a) => a.scope === 'document' || a.pageId === page.id
-  );
-}
 
 function safeName(name) {
   return (name || 'document').replace(/[^\w\-]+/g, '_').slice(0, 80) || 'document';

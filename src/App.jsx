@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useStore } from './store/StoreContext.jsx';
 import { makeThumbnail } from './lib/imaging.js';
+import { FULL_CORNERS } from './lib/geometry.js';
 import { uid } from './lib/id.js';
 import LibraryScreen from './components/LibraryScreen.jsx';
 import CameraView from './components/CameraView.jsx';
@@ -14,6 +15,40 @@ export default function App() {
 
   const [nav, setNav] = useState({ name: 'library' });
   const [draft, setDraft] = useState(null);
+  const [importing, setImporting] = useState(null); // null | { progress, error }
+
+  // --- Import an existing PDF as a new document (each page → a page) ---
+  const importPdf = useCallback(
+    async (file, folderId) => {
+      if (!file) return;
+      setImporting({ progress: 0, error: null });
+      try {
+        const { pdfToPageImages } = await import('./lib/pdf.js');
+        const images = await pdfToPageImages(file, (p) =>
+          setImporting({ progress: p, error: null })
+        );
+        if (!images.length) throw new Error('No pages found in PDF.');
+        const doc = await createDocument({
+          folderId: folderId || null,
+          name: file.name.replace(/\.pdf$/i, '') || 'Imported PDF',
+        });
+        const pages = images.map((img) => ({
+          id: uid(),
+          originalImage: img,
+          cropCorners: FULL_CORNERS,
+          filter: 'original',
+          processedImage: img,
+        }));
+        const thumbnail = await makeThumbnail(pages[0].processedImage);
+        await saveDocument({ ...doc, pages, thumbnail });
+        setImporting(null);
+        setNav({ name: 'editor', documentId: doc.id });
+      } catch (err) {
+        setImporting({ progress: 0, error: err?.message || 'Import failed' });
+      }
+    },
+    [createDocument, saveDocument]
+  );
 
   // --- Scan session entry points ---
   const startNewScan = useCallback((folderId) => {
@@ -190,6 +225,9 @@ export default function App() {
           <LibraryScreen
             onNewScan={startNewScan}
             onOpenDoc={(id) => setNav({ name: 'editor', documentId: id })}
+            onImportPdf={importPdf}
+            importing={importing}
+            onDismissImportError={() => setImporting(null)}
           />
         </div>
       );
