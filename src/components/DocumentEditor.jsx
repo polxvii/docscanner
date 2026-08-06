@@ -92,12 +92,23 @@ export default function DocumentEditor({
     : null;
 
   if (openPage) {
+    const idx = doc.pages.findIndex((p) => p.id === openPageId);
     return (
       <PageDetail
         doc={doc}
         page={openPage}
+        pageIndex={idx}
+        pageCount={doc.pages.length}
         onBack={() => setOpenPageId(null)}
         onReEdit={(page) => onReEditPage(page)}
+        onPrev={
+          idx > 0 ? () => setOpenPageId(doc.pages[idx - 1].id) : null
+        }
+        onNext={
+          idx < doc.pages.length - 1
+            ? () => setOpenPageId(doc.pages[idx + 1].id)
+            : null
+        }
       />
     );
   }

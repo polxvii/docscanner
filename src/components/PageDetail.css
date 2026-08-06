@@ -18,6 +18,28 @@
   -webkit-user-drag: none;
 }
 
+.page-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 56px;
+  border: none;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+  backdrop-filter: blur(4px);
+}
+.page-nav.prev {
+  left: 0;
+  border-radius: 0 10px 10px 0;
+}
+.page-nav.next {
+  right: 0;
+  border-radius: 10px 0 0 10px;
+}
+
 .zoom-controls {
   position: absolute;
   right: 10px;

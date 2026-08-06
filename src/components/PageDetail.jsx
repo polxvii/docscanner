@@ -20,7 +20,16 @@ import './PageDetail.css';
 
 const MAX_ZOOM = 5;
 
-export default function PageDetail({ doc, page, onBack, onReEdit }) {
+export default function PageDetail({
+  doc,
+  page,
+  pageIndex = 0,
+  pageCount = 1,
+  onBack,
+  onReEdit,
+  onPrev,
+  onNext,
+}) {
   const { saveDocument } = useStore();
   const stageRef = useRef(null);
   const [stage, setStage] = useState({ w: 0, h: 0 });
@@ -42,7 +51,16 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
   const liveRef = useRef(null);
   const annsRef = useRef([]);
   const debounceRef = useRef(null);
+  const swipeRef = useRef(null);
   const [, bump] = useReducer((x) => x + 1, 0);
+
+  // Reset view/selection when navigating to another page (swipe / prev-next).
+  useEffect(() => {
+    setSelectedId(null);
+    setView({ scale: 1, tx: 0, ty: 0 });
+    setNatural(null);
+    liveRef.current = null;
+  }, [page.id]);
 
   useLayoutEffect(() => {
     const el = stageRef.current;
@@ -144,6 +162,12 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const pts = [...pointersRef.current.values()];
     const box = stageRef.current.getBoundingClientRect();
+    // Track a potential horizontal swipe (only when not zoomed).
+    if (pts.length === 1 && view.scale === 1) {
+      swipeRef.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    } else {
+      swipeRef.current = null;
+    }
     if (pts.length === 2) {
       const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
       const mid = {
@@ -165,6 +189,19 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
         start: { x: e.clientX, y: e.clientY },
         startView: { ...view },
       };
+    }
+  };
+
+  const onStagePointerUp = (e) => {
+    const s = swipeRef.current;
+    if (!s || s.id !== e.pointerId) return;
+    swipeRef.current = null;
+    if (view.scale !== 1) return;
+    const dx = e.clientX - s.x;
+    const dy = e.clientY - s.y;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+      if (dx > 0) onPrev?.();
+      else onNext?.();
     }
   };
 
@@ -382,7 +419,9 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
         <button className="btn ghost icon" onClick={onBack} aria-label="Back">
           ‹
         </button>
-        <h2>Page</h2>
+        <h2>
+          Page {pageIndex + 1}/{pageCount}
+        </h2>
         <button className="btn small" onClick={() => onReEdit(page)}>
           Re-edit
         </button>
@@ -395,6 +434,7 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
         className="page-stage"
         ref={stageRef}
         onPointerDown={onStagePointerDown}
+        onPointerUp={onStagePointerUp}
       >
         <div className="page-transform" style={{ transform }}>
           {rect && (
@@ -442,6 +482,25 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
             +
           </button>
         </div>
+
+        {onPrev && (
+          <button
+            className="page-nav prev"
+            onClick={onPrev}
+            aria-label="Previous page"
+          >
+            ‹
+          </button>
+        )}
+        {onNext && (
+          <button
+            className="page-nav next"
+            onClick={onNext}
+            aria-label="Next page"
+          >
+            ›
+          </button>
+        )}
       </div>
 
       {selected && (
