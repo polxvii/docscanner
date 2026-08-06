@@ -227,7 +227,7 @@ export async function applyFilter(srcDataUrl, filter) {
       d[i + 2] = g[d[i + 2]];
     }
   } else if (filter === 'bw') {
-    adaptiveThreshold(d, w, h);
+    documentBW(d, w, h);
   }
 
   ctx.putImageData(imgData, 0, 0);
@@ -235,15 +235,19 @@ export async function applyFilter(srcDataUrl, filter) {
 }
 
 /**
- * Adaptive mean threshold (integral-image based) — in place on RGBA data.
- * Great for uneven lighting; classic document B&W.
+ * Clean document B&W via flat-field correction (in place on RGBA data).
+ * Estimates the local background illumination with a large-window box mean
+ * (integral image), divides each pixel by it so the paper becomes uniformly
+ * white regardless of shadows/gradients, then contrast-stretches the ratio.
+ * The soft (anti-aliased) transition avoids the speckle that hard adaptive
+ * thresholding produces on photos.
  */
-function adaptiveThreshold(d, w, h) {
+function documentBW(d, w, h) {
   const gray = new Float64Array(w * h);
   for (let i = 0, p = 0; i < d.length; i += 4, p++) {
     gray[p] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
   }
-  // Integral image (w+1 × h+1).
+  // Integral image for a fast large-window mean (the background estimate).
   const iw = w + 1;
   const integral = new Float64Array(iw * (h + 1));
   for (let y = 0; y < h; y++) {
@@ -253,10 +257,13 @@ function adaptiveThreshold(d, w, h) {
       integral[(y + 1) * iw + (x + 1)] = integral[y * iw + (x + 1)] + rowSum;
     }
   }
-  // Larger window + a higher bias so only clearly-dark ink turns black; this
-  // keeps the background clean instead of speckly.
-  const radius = Math.max(12, Math.round(Math.min(w, h) / 18));
-  const C = 14;
+  // Big window → smooth illumination map, not individual glyphs.
+  const radius = Math.max(15, Math.round(Math.min(w, h) / 8));
+  // Ink is where the pixel is notably darker than its background.
+  const inkRatio = 0.55; // ratio <= this → black
+  const paperRatio = 0.92; // ratio >= this → white
+  const span = paperRatio - inkRatio;
+
   for (let y = 0; y < h; y++) {
     const y0 = Math.max(0, y - radius);
     const y1 = Math.min(h - 1, y + radius);
@@ -269,11 +276,14 @@ function adaptiveThreshold(d, w, h) {
         integral[y0 * iw + (x1 + 1)] -
         integral[(y1 + 1) * iw + x0] +
         integral[y0 * iw + x0];
-      const mean = sum / count;
+      const bg = sum / count;
       const p = y * w + x;
-      const val = gray[p] < mean - C ? 0 : 255;
+      const ratio = bg > 1 ? gray[p] / bg : 1;
+      let val = (ratio - inkRatio) / span;
+      val = val < 0 ? 0 : val > 1 ? 1 : val;
+      const g = clamp255(Math.round(val * 255));
       const di = p * 4;
-      d[di] = d[di + 1] = d[di + 2] = val;
+      d[di] = d[di + 1] = d[di + 2] = g;
     }
   }
 }
