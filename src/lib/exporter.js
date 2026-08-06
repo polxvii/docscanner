@@ -28,7 +28,7 @@ function drawAnnotation(ctx, ann, rect, sigImg) {
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(((ann.rotation || 0) * Math.PI) / 180);
-  if (ann.type === 'signature' && sigImg) {
+  if ((ann.type === 'signature' || ann.type === 'image') && sigImg) {
     ctx.drawImage(sigImg, -bw / 2, -bh / 2, bw, bh);
   } else if (ann.type === 'text') {
     // Font size is driven by the box height ratio (matches the editor).
@@ -62,7 +62,10 @@ async function composePageCanvas(doc, page, pageW, pageH, scale) {
 
   for (const ann of applicableAnnotations(doc, page)) {
     let sigImg = null;
-    if (ann.type === 'signature' && ann.content?.dataUrl) {
+    if (
+      (ann.type === 'signature' || ann.type === 'image') &&
+      ann.content?.dataUrl
+    ) {
       sigImg = await loadImage(ann.content.dataUrl);
     }
     drawAnnotation(ctx, ann, rect, sigImg);

@@ -14,12 +14,17 @@ export default function AnnotationLayer({
   onSelect,
   onChange,
   onCommit,
+  scale = 1,
   editable = true,
 }) {
   const layerRef = useRef(null);
   const dragRef = useRef(null);
   const commitRef = useRef(onCommit);
   commitRef.current = onCommit;
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
+
+  const isImageLike = (a) => a.type === 'signature' || a.type === 'image';
 
   useEffect(() => {
     if (!editable || !rect) return;
@@ -27,8 +32,9 @@ export default function AnnotationLayer({
       const d = dragRef.current;
       if (!d) return;
       e.preventDefault();
-      const dx = (e.clientX - d.px) / rect.w;
-      const dy = (e.clientY - d.py) / rect.h;
+      const s = scaleRef.current || 1;
+      const dx = (e.clientX - d.px) / (rect.w * s);
+      const dy = (e.clientY - d.py) / (rect.h * s);
 
       if (d.mode === 'move') {
         onChange(d.id, {
@@ -94,7 +100,7 @@ export default function AnnotationLayer({
       y0: ann.y,
       w0: ann.width,
       h0: ann.height,
-      aspect: ann.type === 'signature' ? ann.height / ann.width : 0,
+      aspect: isImageLike(ann) ? ann.height / ann.width : 0,
       content: ann.content,
     };
   };
@@ -102,9 +108,11 @@ export default function AnnotationLayer({
   const startRotate = (ann) => (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const box = layerRef.current.getBoundingClientRect();
-    const cx = box.left + rect.x + (ann.x + ann.width / 2) * rect.w;
-    const cy = box.top + rect.y + (ann.y + ann.height / 2) * rect.h;
+    // Centre from the annotation element's own box → correct under zoom/pan.
+    const el = e.currentTarget.closest('.annotation');
+    const b = el.getBoundingClientRect();
+    const cx = b.left + b.width / 2;
+    const cy = b.top + b.height / 2;
     dragRef.current = {
       mode: 'rotate',
       id: ann.id,
@@ -133,12 +141,8 @@ export default function AnnotationLayer({
             style={style}
             onPointerDown={startMove(ann)}
           >
-            {ann.type === 'signature' ? (
-              <img
-                src={ann.content.dataUrl}
-                alt="Signature"
-                draggable={false}
-              />
+            {isImageLike(ann) ? (
+              <img src={ann.content.dataUrl} alt="" draggable={false} />
             ) : (
               <span
                 className="ann-text"

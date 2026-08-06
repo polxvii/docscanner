@@ -6,10 +6,41 @@
   background: #0f1216;
   touch-action: none;
 }
+.page-transform {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
 .page-image {
   position: absolute;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+.zoom-controls {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 999px;
+  padding: 4px;
+  backdrop-filter: blur(6px);
+}
+.zoom-btn {
+  min-width: 34px;
+  height: 34px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 999px;
+}
+.zoom-btn:active {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .ann-editor {
