@@ -153,37 +153,42 @@ export default function CropScreen({ image, initialCorners, onConfirm, onCancel 
     }
   }, [base]);
 
-  // Bake the chosen rotation into the working image (debounced for the slider).
-  // Rotating always starts from the original `image`, so the slider is smooth
-  // and reversible. Corners reset since orientation changed.
-  useEffect(() => {
-    if (angle === appliedAngleRef.current) return;
-    let alive = true;
-    const t = setTimeout(async () => {
-      setBusy(true);
-      try {
-        const rotated = await rotateImageAny(image, angle);
-        if (!alive) return;
-        appliedAngleRef.current = angle;
-        setBase(rotated);
-        setCorners(INSET_CORNERS);
-      } finally {
-        if (alive) setBusy(false);
-      }
-    }, 150);
-    return () => {
-      alive = false;
-      clearTimeout(t);
-    };
-  }, [angle, image]);
-
+  // Live rotation: the slider only sets `angle` for a cheap CSS preview; the
+  // full-res rotate is baked into the image on release, so dragging stays
+  // smooth. Rotating always starts from the original `image`.
   const wrapAngle = (a) => {
     let v = ((a % 360) + 360) % 360;
     if (v > 180) v -= 360;
     return v;
   };
-  const bumpAngle = (delta) => setAngle((a) => wrapAngle(a + delta));
-  const normAngle = (((angle % 360) + 360) % 360);
+  const normAngle = ((angle % 360) + 360) % 360;
+  const previewRot = wrapAngle(angle - appliedAngleRef.current);
+
+  const bakeAngle = useCallback(
+    async (target) => {
+      if (target === appliedAngleRef.current) return;
+      setBusy(true);
+      try {
+        const rotated = await rotateImageAny(image, target);
+        appliedAngleRef.current = target;
+        setBase(rotated);
+        setCorners(INSET_CORNERS);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [image]
+  );
+  const bumpAngle = (delta) => {
+    const na = wrapAngle(angle + delta);
+    setAngle(na);
+    bakeAngle(na);
+  };
+  const setPreset = (a) => {
+    const na = a > 180 ? a - 360 : a;
+    setAngle(na);
+    bakeAngle(na);
+  };
 
   const confirm = useCallback(async () => {
     setBusy(true);
@@ -216,8 +221,17 @@ export default function CropScreen({ image, initialCorners, onConfirm, onCancel 
               className="crop-image"
               src={base}
               alt="To crop"
-              style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
+              style={{
+                left: rect.x,
+                top: rect.y,
+                width: rect.w,
+                height: rect.h,
+                transform: previewRot ? `rotate(${previewRot}deg)` : undefined,
+                transformOrigin: 'center center',
+              }}
             />
+            {previewRot === 0 && (
+              <>
             <svg
               className="crop-svg"
               width={stage.w}
@@ -261,6 +275,8 @@ export default function CropScreen({ image, initialCorners, onConfirm, onCancel 
                 />
               );
             })}
+              </>
+            )}
           </>
         )}
 
@@ -303,6 +319,10 @@ export default function CropScreen({ image, initialCorners, onConfirm, onCancel 
           step="1"
           value={angle}
           onChange={(e) => setAngle(Number(e.target.value))}
+          onPointerUp={() => bakeAngle(angle)}
+          onMouseUp={() => bakeAngle(angle)}
+          onTouchEnd={() => bakeAngle(angle)}
+          onKeyUp={() => bakeAngle(angle)}
           aria-label="Rotate"
           className="crop-rotate-range"
         />
@@ -321,7 +341,7 @@ export default function CropScreen({ image, initialCorners, onConfirm, onCancel 
           <button
             key={a}
             className={`chip ${normAngle === a ? 'active' : ''}`}
-            onClick={() => setAngle(a > 180 ? a - 360 : a)}
+            onClick={() => setPreset(a)}
             disabled={busy}
           >
             {a}°

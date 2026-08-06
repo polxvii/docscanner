@@ -323,6 +323,10 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
       ? { min: 0.02, max: 0.15, step: 0.005, value: selected.height }
       : { min: 0.1, max: 0.95, step: 0.01, value: selected?.width ?? 0.4 };
 
+  const rot = selected?.rotation || 0;
+  const normRot = ((rot % 360) + 360) % 360; // 0..359 (for preset highlight)
+  const rotSlider = normRot > 180 ? normRot - 360 : normRot; // -180..180
+
   const runPageOcr = async () => {
     setOcrBusy(true);
     setOcrProgress(0);
@@ -423,17 +427,53 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
             </button>
           </div>
 
-          <div className="row" style={{ margin: '8px 0 0', gap: 6, alignItems: 'center' }}>
-            <button className="btn small" onClick={() => rotateBy(-90)} aria-label="Rotate left">
+          <div className="row" style={{ margin: '8px 0 0' }}>
+            <button
+              className="btn small"
+              onClick={() => rotateBy(-90)}
+              aria-label="Rotate left"
+            >
               ⟲
             </button>
-            <button className="btn small" onClick={() => rotateBy(90)} aria-label="Rotate right">
+            <input
+              type="range"
+              aria-label="Rotate"
+              min="-180"
+              max="180"
+              step="1"
+              value={rotSlider}
+              onChange={(e) =>
+                editContent(selected.id, { rotation: Number(e.target.value) })
+              }
+              style={{ flex: 1 }}
+            />
+            <button
+              className="btn small"
+              onClick={() => rotateBy(90)}
+              aria-label="Rotate right"
+            >
               ⟳
             </button>
             <span
-              style={{ fontSize: 12, color: 'var(--text-dim)', minWidth: 38, textAlign: 'center' }}
+              style={{ fontSize: 12, color: 'var(--text-dim)', minWidth: 40, textAlign: 'right' }}
             >
-              {selected.rotation || 0}°
+              {Math.round(rotSlider)}°
+            </span>
+          </div>
+          <div className="chip-row" style={{ padding: '6px 0 0' }}>
+            {[0, 90, 180, 270].map((a) => (
+              <button
+                key={a}
+                className={`chip ${normRot === a ? 'active' : ''}`}
+                onClick={() => setNow(selected.id, { rotation: a })}
+              >
+                {a}°
+              </button>
+            ))}
+          </div>
+          <div className="row" style={{ margin: '8px 0 0' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-dim)', minWidth: 52 }}>
+              Size
             </span>
             <input
               type="range"
