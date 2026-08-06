@@ -148,10 +148,50 @@ export const FILTERS = [
   { id: 'grayscale', label: 'Grayscale' },
   { id: 'bw', label: 'B&W' },
   { id: 'magic', label: 'Magic Color' },
+  { id: 'lighten', label: 'Lighten' },
 ];
 
 function clamp255(v) {
   return v < 0 ? 0 : v > 255 ? 255 : v;
+}
+
+/**
+ * Auto-levels per channel: stretch so the near-darkest maps to 0 and the
+ * near-brightest to 255. Whitens the paper and neutralises colour casts
+ * (white balance) — a gentle "magic color" without the crushed contrast.
+ */
+function autoLevels(d, lowPct = 0.02, highPct = 0.02) {
+  const total = d.length / 4;
+  for (let ch = 0; ch < 3; ch++) {
+    const hist = new Array(256).fill(0);
+    for (let i = ch; i < d.length; i += 4) hist[d[i]]++;
+    let cum = 0;
+    let lo = 0;
+    for (let v = 0; v < 256; v++) {
+      cum += hist[v];
+      if (cum >= total * lowPct) { lo = v; break; }
+    }
+    cum = 0;
+    let hi = 255;
+    for (let v = 255; v >= 0; v--) {
+      cum += hist[v];
+      if (cum >= total * highPct) { hi = v; break; }
+    }
+    const range = Math.max(1, hi - lo);
+    const lut = new Array(256);
+    for (let v = 0; v < 256; v++) {
+      lut[v] = clamp255(Math.round(((v - lo) * 255) / range));
+    }
+    for (let i = ch; i < d.length; i += 4) d[i] = lut[d[i]];
+  }
+}
+
+function gammaLut(gamma) {
+  const lut = new Array(256);
+  for (let v = 0; v < 256; v++) {
+    lut[v] = clamp255(Math.round(255 * Math.pow(v / 255, gamma)));
+  }
+  return lut;
 }
 
 /** Apply a named filter to an image data URL. Returns a data URL. */
@@ -171,13 +211,20 @@ export async function applyFilter(srcDataUrl, filter) {
       d[i] = d[i + 1] = d[i + 2] = l;
     }
   } else if (filter === 'magic') {
-    // Contrast + brightness boost for a clean "scanned" look.
-    const contrast = 1.3;
-    const bright = 8;
+    // White balance + brighten the page, then a light lift of midtones.
+    autoLevels(d);
+    const g = gammaLut(0.9);
     for (let i = 0; i < d.length; i += 4) {
-      d[i] = clamp255((d[i] - 128) * contrast + 128 + bright);
-      d[i + 1] = clamp255((d[i + 1] - 128) * contrast + 128 + bright);
-      d[i + 2] = clamp255((d[i + 2] - 128) * contrast + 128 + bright);
+      d[i] = g[d[i]];
+      d[i + 1] = g[d[i + 1]];
+      d[i + 2] = g[d[i + 2]];
+    }
+  } else if (filter === 'lighten') {
+    const g = gammaLut(0.7); // lift shadows / brighten dim photos
+    for (let i = 0; i < d.length; i += 4) {
+      d[i] = g[d[i]];
+      d[i + 1] = g[d[i + 1]];
+      d[i + 2] = g[d[i + 2]];
     }
   } else if (filter === 'bw') {
     adaptiveThreshold(d, w, h);
@@ -206,8 +253,10 @@ function adaptiveThreshold(d, w, h) {
       integral[(y + 1) * iw + (x + 1)] = integral[y * iw + (x + 1)] + rowSum;
     }
   }
-  const radius = Math.max(7, Math.round(Math.min(w, h) / 40));
-  const C = 8;
+  // Larger window + a higher bias so only clearly-dark ink turns black; this
+  // keeps the background clean instead of speckly.
+  const radius = Math.max(12, Math.round(Math.min(w, h) / 18));
+  const C = 14;
   for (let y = 0; y < h; y++) {
     const y0 = Math.max(0, y - radius);
     const y1 = Math.min(h - 1, y + radius);

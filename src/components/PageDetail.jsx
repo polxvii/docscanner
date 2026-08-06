@@ -15,6 +15,7 @@ import { uid } from '../lib/id.js';
 import AnnotationLayer from './AnnotationLayer.jsx';
 import SignatureManager from './SignatureManager.jsx';
 import ExportDialog from './ExportDialog.jsx';
+import Modal from './Modal.jsx';
 import './PageDetail.css';
 
 const MAX_ZOOM = 5;
@@ -27,6 +28,7 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
   const [selectedId, setSelectedId] = useState(null);
 
   const [sigOpen, setSigOpen] = useState(false);
+  const [scopeOpen, setScopeOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
@@ -276,17 +278,31 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
     r.readAsDataURL(f);
   };
 
-  const toggleScope = (ann) => {
+  const scopeLabel = (a) => {
+    if (a.scope === 'document') return 'All pages';
+    if (a.scope === 'pages') {
+      const nums = (a.pageIds || [])
+        .map((id) => doc.pages.findIndex((p) => p.id === id) + 1)
+        .filter((n) => n > 0)
+        .sort((x, y) => x - y);
+      return nums.length ? `Pages ${nums.join(', ')}` : 'This page';
+    }
+    return 'This page';
+  };
+
+  const applyScope = (choice) => {
     const next = (doc.annotations || []).map((a) =>
-      a.id === ann.id
+      a.id === selected.id
         ? {
             ...a,
-            scope: a.scope === 'document' ? 'page' : 'document',
-            pageId: page.id,
+            scope: choice.scope,
+            pageId: choice.scope === 'page' ? page.id : a.pageId,
+            pageIds: choice.scope === 'pages' ? choice.pageIds : undefined,
           }
         : a
     );
     persistFull(next);
+    setScopeOpen(false);
   };
 
   const rotateBy = (delta) =>
@@ -395,11 +411,8 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
       {selected && (
         <div className="ann-editor">
           <div className="row" style={{ margin: 0, gap: 8 }}>
-            <button
-              className={`chip ${selected.scope === 'page' ? 'active' : ''}`}
-              onClick={() => toggleScope(selected)}
-            >
-              {selected.scope === 'document' ? 'All pages' : 'This page'}
+            <button className="chip active" onClick={() => setScopeOpen(true)}>
+              {scopeLabel(selected)} ▾
             </button>
             <div className="grow" />
             <button
@@ -503,9 +516,97 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
       {sigOpen && (
         <SignatureManager onPick={addSignature} onClose={() => setSigOpen(false)} />
       )}
+      {scopeOpen && selected && (
+        <ScopeModal
+          pages={doc.pages}
+          currentPageId={page.id}
+          ann={selected}
+          onApply={applyScope}
+          onClose={() => setScopeOpen(false)}
+        />
+      )}
       {exportOpen && (
         <ExportDialog doc={doc} page={page} onClose={() => setExportOpen(false)} />
       )}
     </div>
+  );
+}
+
+function ScopeModal({ pages, currentPageId, ann, onApply, onClose }) {
+  const [mode, setMode] = useState(
+    ann.scope === 'document' ? 'document' : ann.scope === 'pages' ? 'pages' : 'page'
+  );
+  const [ids, setIds] = useState(
+    () =>
+      new Set(
+        ann.scope === 'pages' && ann.pageIds ? ann.pageIds : [currentPageId]
+      )
+  );
+
+  const toggle = (id) =>
+    setIds((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
+  const apply = () => {
+    if (mode === 'page') onApply({ scope: 'page' });
+    else if (mode === 'document') onApply({ scope: 'document' });
+    else onApply({ scope: 'pages', pageIds: [...ids] });
+  };
+
+  return (
+    <Modal title="Show annotation on" onClose={onClose}>
+      <div className="chip-row" style={{ marginBottom: 10 }}>
+        <button
+          className={`chip ${mode === 'page' ? 'active' : ''}`}
+          onClick={() => setMode('page')}
+        >
+          This page
+        </button>
+        <button
+          className={`chip ${mode === 'document' ? 'active' : ''}`}
+          onClick={() => setMode('document')}
+        >
+          All pages
+        </button>
+        <button
+          className={`chip ${mode === 'pages' ? 'active' : ''}`}
+          onClick={() => setMode('pages')}
+        >
+          Choose pages
+        </button>
+      </div>
+
+      {mode === 'pages' && (
+        <div className="scope-pages">
+          {pages.map((p, i) => (
+            <label key={p.id} className="scope-page">
+              <input
+                type="checkbox"
+                checked={ids.has(p.id)}
+                onChange={() => toggle(p.id)}
+              />
+              <span>Page {i + 1}</span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      <div className="actions">
+        <button className="btn" onClick={onClose}>
+          Cancel
+        </button>
+        <button
+          className="btn primary"
+          onClick={apply}
+          disabled={mode === 'pages' && ids.size === 0}
+        >
+          Apply
+        </button>
+      </div>
+    </Modal>
   );
 }
