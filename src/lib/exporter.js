@@ -26,6 +26,7 @@ function drawAnnotation(ctx, ann, rect, sigImg) {
   const cy = rect.y + (ann.y + ann.height / 2) * rect.h;
 
   ctx.save();
+  ctx.globalAlpha = ann.opacity ?? 1;
   ctx.translate(cx, cy);
   ctx.rotate(((ann.rotation || 0) * Math.PI) / 180);
   if ((ann.type === 'signature' || ann.type === 'image') && sigImg) {

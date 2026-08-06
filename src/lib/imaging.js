@@ -296,6 +296,30 @@ export async function rotateImage(srcDataUrl, deg) {
   return canvas.toDataURL('image/jpeg', 0.92);
 }
 
+/** Rotate an image by an arbitrary angle (expands canvas, white background). */
+export async function rotateImageAny(srcDataUrl, deg) {
+  const norm = ((deg % 360) + 360) % 360;
+  if (norm === 0) return srcDataUrl;
+  const img = await loadImage(srcDataUrl);
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const rad = (norm * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(rad));
+  const sin = Math.abs(Math.sin(rad));
+  const nw = Math.round(w * cos + h * sin);
+  const nh = Math.round(w * sin + h * cos);
+  const canvas = document.createElement('canvas');
+  canvas.width = nw;
+  canvas.height = nh;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, nw, nh);
+  ctx.translate(nw / 2, nh / 2);
+  ctx.rotate(rad);
+  ctx.drawImage(img, -w / 2, -h / 2);
+  return canvas.toDataURL('image/jpeg', 0.92);
+}
+
 export function rotateCornersNorm(corners, deg) {
   return corners.map((c) => {
     if (deg === 90) return { x: 1 - c.y, y: c.x };

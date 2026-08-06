@@ -444,6 +444,24 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
             />
           </div>
 
+          <div className="row" style={{ margin: '8px 0 0', gap: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-dim)', minWidth: 52 }}>
+              Opacity
+            </span>
+            <input
+              type="range"
+              aria-label="Opacity"
+              min="0.1"
+              max="1"
+              step="0.05"
+              value={selected.opacity ?? 1}
+              onChange={(e) =>
+                editContent(selected.id, { opacity: Number(e.target.value) })
+              }
+              style={{ flex: 1 }}
+            />
+          </div>
+
           {selected.type === 'text' && (
             <div className="row" style={{ marginBottom: 0 }}>
               <input

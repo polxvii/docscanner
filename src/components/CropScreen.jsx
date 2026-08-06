@@ -2,11 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import {
   autoDetectCorners,
   loadImage,
-  rotateImage,
-  rotateCornersNorm,
+  rotateImageAny,
   warpPerspective,
 } from '../lib/imaging.js';
-import { FULL_CORNERS, clamp, contentRect, orderCorners } from '../lib/geometry.js';
+import { FULL_CORNERS, clamp, contentRect } from '../lib/geometry.js';
 import './CropScreen.css';
 
 // Edges connect corner pairs (indices into [TL,TR,BR,BL]).
@@ -24,6 +23,9 @@ const INSET_CORNERS = [
   { x: 0.08, y: 0.92 },
 ];
 
+const LOUPE_SIZE = 140; // px
+const LOUPE_ZOOM = 2.6;
+
 export default function CropScreen({ image, initialCorners, onConfirm, onCancel }) {
   const stageRef = useRef(null);
   const dragRef = useRef(null);
@@ -35,6 +37,9 @@ export default function CropScreen({ image, initialCorners, onConfirm, onCancel 
   const [natural, setNatural] = useState(null);
   const [stage, setStage] = useState({ w: 0, h: 0 });
   const [busy, setBusy] = useState(false);
+  const [loupe, setLoupe] = useState(null); // {x,y} normalised, while dragging
+  const [angle, setAngle] = useState(0); // rotation applied to the source image
+  const appliedAngleRef = useRef(0);
 
   // On first open (fresh capture), try to auto-detect the document.
   useEffect(() => {
@@ -96,6 +101,7 @@ export default function CropScreen({ image, initialCorners, onConfirm, onCancel 
       if (!drag) return;
       e.preventDefault();
       const n = normFromEvent(e);
+      setLoupe(n);
       if (drag.type === 'corner') {
         setCorners((prev) => prev.map((c, i) => (i === drag.index ? n : c)));
       } else {
@@ -113,6 +119,7 @@ export default function CropScreen({ image, initialCorners, onConfirm, onCancel 
     };
     const onUp = () => {
       dragRef.current = null;
+      setLoupe(null);
     };
     window.addEventListener('pointermove', onMove, { passive: false });
     window.addEventListener('pointerup', onUp);
@@ -146,19 +153,37 @@ export default function CropScreen({ image, initialCorners, onConfirm, onCancel 
     }
   }, [base]);
 
-  const rotate = useCallback(
-    async (deg) => {
+  // Bake the chosen rotation into the working image (debounced for the slider).
+  // Rotating always starts from the original `image`, so the slider is smooth
+  // and reversible. Corners reset since orientation changed.
+  useEffect(() => {
+    if (angle === appliedAngleRef.current) return;
+    let alive = true;
+    const t = setTimeout(async () => {
       setBusy(true);
       try {
-        const rotated = await rotateImage(base, deg);
-        setCorners((prev) => orderCorners(rotateCornersNorm(prev, deg)));
+        const rotated = await rotateImageAny(image, angle);
+        if (!alive) return;
+        appliedAngleRef.current = angle;
         setBase(rotated);
+        setCorners(INSET_CORNERS);
       } finally {
-        setBusy(false);
+        if (alive) setBusy(false);
       }
-    },
-    [base]
-  );
+    }, 150);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [angle, image]);
+
+  const wrapAngle = (a) => {
+    let v = ((a % 360) + 360) % 360;
+    if (v > 180) v -= 360;
+    return v;
+  };
+  const bumpAngle = (delta) => setAngle((a) => wrapAngle(a + delta));
+  const normAngle = (((angle % 360) + 360) % 360);
 
   const confirm = useCallback(async () => {
     setBusy(true);
@@ -238,11 +263,70 @@ export default function CropScreen({ image, initialCorners, onConfirm, onCancel 
             })}
           </>
         )}
+
+        {loupe && rect && (
+          <div
+            className="crop-loupe"
+            style={{
+              width: LOUPE_SIZE,
+              height: LOUPE_SIZE,
+              backgroundImage: `url(${base})`,
+              backgroundSize: `${rect.w * LOUPE_ZOOM}px ${rect.h * LOUPE_ZOOM}px`,
+              backgroundPosition: `${LOUPE_SIZE / 2 - loupe.x * rect.w * LOUPE_ZOOM}px ${LOUPE_SIZE / 2 - loupe.y * rect.h * LOUPE_ZOOM}px`,
+            }}
+          >
+            <div className="crop-loupe-cross-h" />
+            <div className="crop-loupe-cross-v" />
+          </div>
+        )}
+
         {busy && (
           <div className="crop-busy">
             <div className="spinner" />
           </div>
         )}
+      </div>
+
+      <div className="crop-rotate">
+        <button
+          className="btn icon"
+          onClick={() => bumpAngle(-90)}
+          disabled={busy}
+          aria-label="Rotate left"
+        >
+          ⟲
+        </button>
+        <input
+          type="range"
+          min="-180"
+          max="180"
+          step="1"
+          value={angle}
+          onChange={(e) => setAngle(Number(e.target.value))}
+          aria-label="Rotate"
+          className="crop-rotate-range"
+        />
+        <button
+          className="btn icon"
+          onClick={() => bumpAngle(90)}
+          disabled={busy}
+          aria-label="Rotate right"
+        >
+          ⟳
+        </button>
+        <span className="crop-angle">{normAngle}°</span>
+      </div>
+      <div className="chip-row crop-presets">
+        {[0, 90, 180, 270].map((a) => (
+          <button
+            key={a}
+            className={`chip ${normAngle === a ? 'active' : ''}`}
+            onClick={() => setAngle(a > 180 ? a - 360 : a)}
+            disabled={busy}
+          >
+            {a}°
+          </button>
+        ))}
       </div>
 
       <div className="toolbar">
@@ -257,22 +341,6 @@ export default function CropScreen({ image, initialCorners, onConfirm, onCancel 
           All
         </button>
         <div className="grow" />
-        <button
-          className="btn icon"
-          onClick={() => rotate(270)}
-          disabled={busy}
-          aria-label="Rotate left"
-        >
-          ⟲
-        </button>
-        <button
-          className="btn icon"
-          onClick={() => rotate(90)}
-          disabled={busy}
-          aria-label="Rotate right"
-        >
-          ⟳
-        </button>
       </div>
     </div>
   );

@@ -132,6 +132,7 @@ export default function AnnotationLayer({
           width: ann.width * rect.w,
           height: ann.height * rect.h,
           transform: `rotate(${ann.rotation || 0}deg)`,
+          opacity: ann.opacity ?? 1,
         };
         const selected = editable && ann.id === selectedId;
         return (
