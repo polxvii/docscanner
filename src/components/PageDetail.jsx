@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { useStore } from '../store/StoreContext.jsx';
 import { contentRect } from '../lib/geometry.js';
-import { loadImage } from '../lib/imaging.js';
+import { applyFilter, loadImage } from '../lib/imaging.js';
 import { applicableAnnotations } from '../lib/annotations.js';
 import { uid } from '../lib/id.js';
 import AnnotationLayer from './AnnotationLayer.jsx';
@@ -310,6 +310,23 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
       rotation: ((((selected.rotation || 0) + delta) % 360) + 360) % 360,
     });
 
+  // Apply a colour filter to a signature/image annotation (non-destructive:
+  // keeps the un-filtered baseDataUrl so filters can be re-chosen).
+  const applyAnnFilter = async (filterId) => {
+    const base = selected.content.baseDataUrl || selected.content.dataUrl;
+    const out = await applyFilter(base, filterId);
+    persistFull(
+      (doc.annotations || []).map((a) =>
+        a.id === selected.id
+          ? {
+              ...a,
+              content: { ...a.content, baseDataUrl: base, dataUrl: out, filter: filterId },
+            }
+          : a
+      )
+    );
+  };
+
   const onSizeChange = (v) => {
     if (selected.type === 'text') {
       editContent(selected.id, { height: v, content: { fontSize: v } });
@@ -501,6 +518,26 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
               style={{ flex: 1 }}
             />
           </div>
+
+          {(selected.type === 'signature' || selected.type === 'image') && (
+            <div className="chip-row" style={{ padding: '6px 0 0' }}>
+              {[
+                ['original', 'Original'],
+                ['grayscale', 'Gray'],
+                ['bw', 'B&W'],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  className={`chip ${
+                    (selected.content.filter || 'original') === id ? 'active' : ''
+                  }`}
+                  onClick={() => applyAnnFilter(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {selected.type === 'text' && (
             <div className="row" style={{ marginBottom: 0 }}>

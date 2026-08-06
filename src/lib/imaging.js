@@ -194,9 +194,12 @@ function gammaLut(gamma) {
   return lut;
 }
 
-/** Apply a named filter to an image data URL. Returns a data URL. */
-export async function applyFilter(srcDataUrl, filter) {
-  if (!filter || filter === 'original') return srcDataUrl;
+/**
+ * Apply a named filter to an image data URL. Returns a data URL.
+ * @param {number} [intensity=1] 0..1 — blends the result toward the original.
+ */
+export async function applyFilter(srcDataUrl, filter, intensity = 1) {
+  if (!filter || filter === 'original' || intensity <= 0) return srcDataUrl;
   const img = await loadImage(srcDataUrl);
   const canvas = imageToCanvas(img);
   const ctx = canvas.getContext('2d');
@@ -204,6 +207,7 @@ export async function applyFilter(srcDataUrl, filter) {
   const h = canvas.height;
   const imgData = ctx.getImageData(0, 0, w, h);
   const d = imgData.data;
+  const orig = intensity < 1 ? Uint8ClampedArray.from(d) : null;
 
   if (filter === 'grayscale') {
     for (let i = 0; i < d.length; i += 4) {
@@ -230,8 +234,19 @@ export async function applyFilter(srcDataUrl, filter) {
     documentBW(d, w, h);
   }
 
+  // Blend toward the original for partial-strength filters.
+  if (orig) {
+    for (let i = 0; i < d.length; i += 4) {
+      d[i] = orig[i] + (d[i] - orig[i]) * intensity;
+      d[i + 1] = orig[i + 1] + (d[i + 1] - orig[i + 1]) * intensity;
+      d[i + 2] = orig[i + 2] + (d[i + 2] - orig[i + 2]) * intensity;
+    }
+  }
+
   ctx.putImageData(imgData, 0, 0);
-  return canvas.toDataURL(filter === 'bw' ? 'image/png' : 'image/jpeg', 0.92);
+  // A blended B&W is no longer pure black/white, so JPEG is fine and smaller.
+  const type = filter === 'bw' && intensity >= 1 ? 'image/png' : 'image/jpeg';
+  return canvas.toDataURL(type, 0.92);
 }
 
 /**
