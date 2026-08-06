@@ -21,6 +21,13 @@ body,
   margin: 0;
 }
 
+/* Use the *visible* viewport height on mobile so bottom control bars are never
+   hidden behind the browser's chrome (iOS Safari counts 100% as the large
+   viewport that extends behind its toolbar). */
+#root {
+  height: 100dvh;
+}
+
 body {
   background: var(--bg);
   color: var(--text);
