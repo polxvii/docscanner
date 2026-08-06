@@ -6,6 +6,7 @@ import {
   applyFilter,
   makeThumbnail,
 } from '../lib/imaging.js';
+import { usePinchZoom } from '../hooks/usePinchZoom.js';
 import './FilterScreen.css';
 
 const ADJUSTS = [
@@ -30,6 +31,7 @@ export default function FilterScreen({
   const [bigPreview, setBigPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const smallRef = useRef(null);
+  const zoom = usePinchZoom(6);
 
   useEffect(() => {
     let alive = true;
@@ -90,8 +92,25 @@ export default function FilterScreen({
         </button>
       </div>
 
-      <div className="filter-preview">
-        <img src={bigPreview || previews[selected] || image} alt="Preview" />
+      <div
+        className="filter-preview"
+        ref={zoom.ref}
+        onPointerDown={zoom.onPointerDown}
+      >
+        <div className="filter-preview-zoom" style={{ transform: zoom.transform }}>
+          <img src={bigPreview || previews[selected] || image} alt="Preview" />
+        </div>
+        <div className="zoom-controls">
+          <button className="zoom-btn" onClick={zoom.zoomOut} aria-label="Zoom out">
+            −
+          </button>
+          <button className="zoom-btn" onClick={zoom.reset}>
+            {Math.round(zoom.view.scale * 100)}%
+          </button>
+          <button className="zoom-btn" onClick={zoom.zoomIn} aria-label="Zoom in">
+            +
+          </button>
+        </div>
       </div>
 
       <div className="adjust-bar">

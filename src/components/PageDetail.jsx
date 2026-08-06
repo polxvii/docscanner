@@ -351,7 +351,7 @@ export default function PageDetail({
   // keeps the un-filtered baseDataUrl so filters can be re-chosen).
   const applyAnnFilter = async (filterId) => {
     const base = selected.content.baseDataUrl || selected.content.dataUrl;
-    const out = await applyFilter(base, filterId);
+    const out = await applyFilter(base, filterId, 1, true); // keep transparency
     persistFull(
       (doc.annotations || []).map((a) =>
         a.id === selected.id
