@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/StoreContext.jsx';
 import { makeThumbnail } from '../lib/imaging.js';
 import PageDetail from './PageDetail.jsx';
@@ -15,9 +15,63 @@ export default function DocumentEditor({
   const doc = documents.find((d) => d.id === documentId);
 
   const [openPageId, setOpenPageId] = useState(null);
-  const [exportOpen, setExportOpen] = useState(false);
+  const [exportTarget, setExportTarget] = useState(null);
   const [editingName, setEditingName] = useState(false);
-  const dragIndex = useRef(null);
+
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+
+  // Pointer-drag reorder (works on touch).
+  const [dragId, setDragId] = useState(null);
+  const [order, setOrder] = useState(null); // array of page ids while dragging
+  const dragIdRef = useRef(null);
+  const orderRef = useRef(null);
+  dragIdRef.current = dragId;
+  orderRef.current = order;
+
+  useEffect(() => {
+    if (!doc) return;
+    const onMove = (e) => {
+      if (!dragIdRef.current) return;
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const card = el?.closest?.('.page-card');
+      const overId = card?.dataset.pid;
+      if (!overId || overId === dragIdRef.current) return;
+      setOrder((prev) => {
+        if (!prev) return prev;
+        const arr = [...prev];
+        const from = arr.indexOf(dragIdRef.current);
+        const to = arr.indexOf(overId);
+        if (from < 0 || to < 0) return prev;
+        arr.splice(from, 1);
+        arr.splice(to, 0, dragIdRef.current);
+        return arr;
+      });
+    };
+    const onUp = async () => {
+      const id = dragIdRef.current;
+      if (!id) return;
+      const ord = orderRef.current;
+      setDragId(null);
+      setOrder(null);
+      if (!ord) return;
+      const pages = ord
+        .map((pid) => doc.pages.find((p) => p.id === pid))
+        .filter(Boolean);
+      const thumbnail = pages[0]
+        ? await makeThumbnail(pages[0].processedImage)
+        : null;
+      await saveDocument({ ...doc, pages, thumbnail });
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [doc, saveDocument]);
 
   if (!doc) {
     return (
@@ -48,28 +102,50 @@ export default function DocumentEditor({
     );
   }
 
-  const refreshThumb = async (pages) => {
-    return pages[0] ? await makeThumbnail(pages[0].processedImage) : null;
-  };
-
-  const reorder = async (from, to) => {
-    if (to < 0 || to >= doc.pages.length || from === to) return;
-    const pages = [...doc.pages];
-    const [moved] = pages.splice(from, 1);
-    pages.splice(to, 0, moved);
-    const thumbnail = await refreshThumb(pages);
-    await saveDocument({ ...doc, pages, thumbnail });
-  };
+  const refreshThumb = async (pages) =>
+    pages[0] ? await makeThumbnail(pages[0].processedImage) : null;
 
   const deletePage = async (pageId) => {
     const pages = doc.pages.filter((p) => p.id !== pageId);
-    // Drop annotations that were scoped to the removed page.
     const annotations = (doc.annotations || []).filter(
       (a) => a.scope === 'document' || a.pageId !== pageId
     );
     const thumbnail = await refreshThumb(pages);
     await saveDocument({ ...doc, pages, annotations, thumbnail });
   };
+
+  const toggleSelect = (id) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
+  const exitSelect = () => {
+    setSelecting(false);
+    setSelected(new Set());
+  };
+
+  const exportSelected = () => {
+    const pages = doc.pages.filter((p) => selected.has(p.id));
+    if (!pages.length) return;
+    setExportTarget({ ...doc, pages });
+  };
+
+  const deleteSelected = async () => {
+    const pages = doc.pages.filter((p) => !selected.has(p.id));
+    const annotations = (doc.annotations || []).filter(
+      (a) => a.scope === 'document' || !selected.has(a.pageId)
+    );
+    const thumbnail = await refreshThumb(pages);
+    await saveDocument({ ...doc, pages, annotations, thumbnail });
+    exitSelect();
+  };
+
+  const renderPages = order
+    ? order.map((id) => doc.pages.find((p) => p.id === id)).filter(Boolean)
+    : doc.pages;
 
   return (
     <div className="screen">
@@ -94,13 +170,21 @@ export default function DocumentEditor({
         ) : (
           <h2 onClick={() => setEditingName(true)}>{doc.name}</h2>
         )}
-        <button
-          className="btn small"
-          onClick={() => setExportOpen(true)}
-          disabled={!doc.pages.length}
-        >
-          Export
-        </button>
+        {doc.pages.length > 0 &&
+          (selecting ? (
+            <button className="btn small" onClick={exitSelect}>
+              Cancel
+            </button>
+          ) : (
+            <>
+              <button className="btn small" onClick={() => setSelecting(true)}>
+                Select
+              </button>
+              <button className="btn small" onClick={() => setExportTarget(doc)}>
+                Export
+              </button>
+            </>
+          ))}
       </div>
 
       <div className="scroll">
@@ -113,65 +197,88 @@ export default function DocumentEditor({
             </button>
           </div>
         ) : (
-          <div className="page-list">
-            {doc.pages.map((p, i) => (
+          <div className="page-grid">
+            {renderPages.map((p, i) => (
               <div
                 key={p.id}
-                className="page-card"
-                draggable
-                onDragStart={() => (dragIndex.current = i)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => reorder(dragIndex.current, i)}
+                data-pid={p.id}
+                className={`page-card ${dragId === p.id ? 'dragging' : ''} ${
+                  selecting && selected.has(p.id) ? 'selected' : ''
+                }`}
               >
                 <button
                   className="page-thumb"
-                  onClick={() => setOpenPageId(p.id)}
+                  onClick={() =>
+                    selecting ? toggleSelect(p.id) : setOpenPageId(p.id)
+                  }
                 >
                   <img src={p.processedImage} alt={`Page ${i + 1}`} />
                   <span className="page-num">{i + 1}</span>
+                  {selecting && (
+                    <span className="page-check">
+                      {selected.has(p.id) ? '✓' : ''}
+                    </span>
+                  )}
                 </button>
-                <div className="page-actions">
-                  <button
-                    className="btn icon small"
-                    onClick={() => reorder(i, i - 1)}
-                    disabled={i === 0}
-                    aria-label="Move up"
-                  >
-                    ↑
-                  </button>
-                  <button
-                    className="btn icon small"
-                    onClick={() => reorder(i, i + 1)}
-                    disabled={i === doc.pages.length - 1}
-                    aria-label="Move down"
-                  >
-                    ↓
-                  </button>
-                  <button
-                    className="btn danger icon small"
-                    onClick={() => deletePage(p.id)}
-                    aria-label="Delete page"
-                  >
-                    ✕
-                  </button>
-                </div>
+                {!selecting && (
+                  <div className="page-card-foot">
+                    <div
+                      className="drag-handle"
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        setDragId(p.id);
+                        setOrder(doc.pages.map((pg) => pg.id));
+                      }}
+                      aria-label="Drag to reorder"
+                    >
+                      ⠿
+                    </div>
+                    <button
+                      className="btn danger icon small"
+                      onClick={() => deletePage(p.id)}
+                      aria-label="Delete page"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      <div className="toolbar">
-        <button className="btn primary grow" onClick={() => onAddPage(doc.id)}>
-          + Add page
-        </button>
-      </div>
+      {selecting ? (
+        <div className="toolbar">
+          <button
+            className="btn danger"
+            onClick={deleteSelected}
+            disabled={!selected.size}
+          >
+            Delete ({selected.size})
+          </button>
+          <div className="grow" />
+          <button
+            className="btn primary"
+            onClick={exportSelected}
+            disabled={!selected.size}
+          >
+            Export ({selected.size})
+          </button>
+        </div>
+      ) : (
+        <div className="toolbar">
+          <button className="btn primary grow" onClick={() => onAddPage(doc.id)}>
+            + Add page
+          </button>
+        </div>
+      )}
 
-      {exportOpen && (
+      {exportTarget && (
         <ExportDialog
-          doc={doc}
-          page={doc.pages[0]}
-          onClose={() => setExportOpen(false)}
+          doc={exportTarget}
+          page={exportTarget.pages[0]}
+          onClose={() => setExportTarget(null)}
         />
       )}
     </div>
