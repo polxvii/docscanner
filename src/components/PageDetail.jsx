@@ -1,4 +1,11 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import { useStore } from '../store/StoreContext.jsx';
 import { contentRect } from '../lib/geometry.js';
 import { loadImage } from '../lib/imaging.js';
@@ -22,6 +29,15 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
 
+  // Transient working copy of the applicable annotations during a drag/resize/
+  // rotate/type interaction. Rendering reads from this so it updates at 60fps
+  // WITHOUT writing the (multi-MB) document to IndexedDB on every pointer move.
+  // We persist once when the interaction ends (pointer up / debounced typing).
+  const liveRef = useRef(null);
+  const annsRef = useRef([]);
+  const debounceRef = useRef(null);
+  const [, bump] = useReducer((x) => x + 1, 0);
+
   useLayoutEffect(() => {
     const el = stageRef.current;
     if (!el) return;
@@ -38,31 +54,62 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
       : null;
 
   const anns = useMemo(() => applicableAnnotations(doc, page), [doc, page]);
-  const selected = anns.find((a) => a.id === selectedId) || null;
+  annsRef.current = anns;
+  const renderAnns = liveRef.current ?? anns;
+  const selected = renderAnns.find((a) => a.id === selectedId) || null;
 
-  const persist = useCallback(
-    (annotations) => saveDocument({ ...doc, annotations }),
+  // Transient in-memory update (no persistence).
+  const applyLive = useCallback((id, patch) => {
+    const base = liveRef.current ?? annsRef.current;
+    liveRef.current = base.map((a) =>
+      a.id === id
+        ? {
+            ...a,
+            ...patch,
+            content: patch.content
+              ? { ...a.content, ...patch.content }
+              : a.content,
+          }
+        : a
+    );
+    bump();
+  }, []);
+
+  // Persist the working copy once, merged back into the full annotation list.
+  const flush = useCallback(async () => {
+    const working = liveRef.current;
+    if (!working) return;
+    const byId = new Map(working.map((a) => [a.id, a]));
+    const merged = (doc.annotations || []).map((a) => byId.get(a.id) || a);
+    await saveDocument({ ...doc, annotations: merged });
+    liveRef.current = null;
+    bump();
+  }, [doc, saveDocument]);
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
+
+  // Structural change (add / delete / scope) — persist immediately.
+  const persistFull = useCallback(
+    (annotations) => {
+      liveRef.current = null;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      return saveDocument({ ...doc, annotations });
+    },
     [doc, saveDocument]
   );
 
-  const updateAnnotation = useCallback(
+  // Text / colour edits — live update + debounced persist.
+  const editContent = useCallback(
     (id, patch) => {
-      const next = (doc.annotations || []).map((a) =>
-        a.id === id
-          ? {
-              ...a,
-              ...patch,
-              content: patch.content ? { ...a.content, ...patch.content } : a.content,
-            }
-          : a
-      );
-      persist(next);
+      applyLive(id, patch);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => flushRef.current(), 350);
     },
-    [doc.annotations, persist]
+    [applyLive]
   );
 
   const deleteAnnotation = (id) => {
-    persist((doc.annotations || []).filter((a) => a.id !== id));
+    persistFull((doc.annotations || []).filter((a) => a.id !== id));
     setSelectedId(null);
   };
 
@@ -79,7 +126,7 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
       scope: 'page',
       pageId: page.id,
     };
-    persist([...(doc.annotations || []), ann]);
+    persistFull([...(doc.annotations || []), ann]);
     setSelectedId(ann.id);
   };
 
@@ -87,7 +134,6 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
     setSigOpen(false);
     const img = await loadImage(dataUrl);
     const width = 0.35;
-    // Preserve the signature's aspect ratio relative to the page image rect.
     let height = 0.15;
     if (rect) {
       height =
@@ -105,15 +151,21 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
       scope: 'page',
       pageId: page.id,
     };
-    persist([...(doc.annotations || []), ann]);
+    persistFull([...(doc.annotations || []), ann]);
     setSelectedId(ann.id);
   };
 
   const toggleScope = (ann) => {
-    updateAnnotation(ann.id, {
-      scope: ann.scope === 'document' ? 'page' : 'document',
-      pageId: page.id,
-    });
+    const next = (doc.annotations || []).map((a) =>
+      a.id === ann.id
+        ? {
+            ...a,
+            scope: a.scope === 'document' ? 'page' : 'document',
+            pageId: page.id,
+          }
+        : a
+    );
+    persistFull(next);
   };
 
   const runPageOcr = async () => {
@@ -166,18 +218,16 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
           alt=""
           style={{ display: 'none' }}
           onLoad={(e) =>
-            setNatural({
-              w: e.target.naturalWidth,
-              h: e.target.naturalHeight,
-            })
+            setNatural({ w: e.target.naturalWidth, h: e.target.naturalHeight })
           }
         />
         <AnnotationLayer
-          annotations={anns}
+          annotations={renderAnns}
           rect={rect}
           selectedId={selectedId}
           onSelect={setSelectedId}
-          onChange={updateAnnotation}
+          onChange={applyLive}
+          onCommit={() => flushRef.current()}
         />
       </div>
 
@@ -204,9 +254,7 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
                 type="text"
                 value={selected.content.text}
                 onChange={(e) =>
-                  updateAnnotation(selected.id, {
-                    content: { text: e.target.value },
-                  })
+                  editContent(selected.id, { content: { text: e.target.value } })
                 }
                 style={{ flex: 1 }}
               />
@@ -214,7 +262,7 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
                 type="color"
                 value={selected.content.color}
                 onChange={(e) =>
-                  updateAnnotation(selected.id, {
+                  editContent(selected.id, {
                     content: { color: e.target.value },
                   })
                 }
@@ -232,7 +280,9 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
               <div className="progress">
                 <span style={{ width: `${Math.round(ocrProgress * 100)}%` }} />
               </div>
-              <p className="dim">Recognising text… {Math.round(ocrProgress * 100)}%</p>
+              <p className="dim">
+                Recognising text… {Math.round(ocrProgress * 100)}%
+              </p>
             </>
           ) : page.ocrText ? (
             <>

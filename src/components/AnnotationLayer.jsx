@@ -13,10 +13,13 @@ export default function AnnotationLayer({
   selectedId,
   onSelect,
   onChange,
+  onCommit,
   editable = true,
 }) {
   const layerRef = useRef(null);
   const dragRef = useRef(null);
+  const commitRef = useRef(onCommit);
+  commitRef.current = onCommit;
 
   useEffect(() => {
     if (!editable || !rect) return;
@@ -47,7 +50,10 @@ export default function AnnotationLayer({
       }
     };
     const onUp = () => {
-      dragRef.current = null;
+      if (dragRef.current) {
+        dragRef.current = null;
+        commitRef.current?.(); // persist once, at the end of the interaction
+      }
     };
     window.addEventListener('pointermove', onMove, { passive: false });
     window.addEventListener('pointerup', onUp);
