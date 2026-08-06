@@ -344,18 +344,33 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
   const normRot = ((rot % 360) + 360) % 360; // 0..359 (for preset highlight)
   const rotSlider = normRot > 180 ? normRot - 360 : normRot; // -180..180
 
+  const ocrAbortRef = useRef(false);
   const runPageOcr = async () => {
+    ocrAbortRef.current = false;
     setOcrBusy(true);
     setOcrProgress(0);
     try {
       const { runOcr } = await import('../lib/ocr.js'); // lazy: loads Tesseract on demand
       const text = await runOcr(page.processedImage, setOcrProgress);
+      if (ocrAbortRef.current) return; // user closed it while running
       const pages = doc.pages.map((p) =>
         p.id === page.id ? { ...p, ocrText: text || '' } : p
       );
       await saveDocument({ ...doc, pages });
     } finally {
       setOcrBusy(false);
+    }
+  };
+
+  // Close / cancel the OCR panel (clears the result and discards any run).
+  const clearOcr = () => {
+    ocrAbortRef.current = true;
+    setOcrBusy(false);
+    if (page.ocrText != null) {
+      const pages = doc.pages.map((p) =>
+        p.id === page.id ? { ...p, ocrText: null } : p
+      );
+      saveDocument({ ...doc, pages });
     }
   };
 
@@ -566,6 +581,16 @@ export default function PageDetail({ doc, page, onBack, onReEdit }) {
 
       {(page.ocrText != null || ocrBusy) && (
         <div className="ocr-panel">
+          <div className="ocr-head">
+            <span className="dim">Text (OCR)</span>
+            <button
+              className="btn ghost icon small"
+              onClick={clearOcr}
+              aria-label="Close OCR"
+            >
+              ✕
+            </button>
+          </div>
           {ocrBusy ? (
             <>
               <div className="progress">

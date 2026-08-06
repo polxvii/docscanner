@@ -198,7 +198,12 @@ function gammaLut(gamma) {
  * Apply a named filter to an image data URL. Returns a data URL.
  * @param {number} [intensity=1] 0..1 — blends the result toward the original.
  */
-export async function applyFilter(srcDataUrl, filter, intensity = 1) {
+export async function applyFilter(
+  srcDataUrl,
+  filter,
+  intensity = 1,
+  preserveAlpha = false
+) {
   if (!filter || filter === 'original' || intensity <= 0) return srcDataUrl;
   const img = await loadImage(srcDataUrl);
   const canvas = imageToCanvas(img);
@@ -244,8 +249,11 @@ export async function applyFilter(srcDataUrl, filter, intensity = 1) {
   }
 
   ctx.putImageData(imgData, 0, 0);
-  // A blended B&W is no longer pure black/white, so JPEG is fine and smaller.
-  const type = filter === 'bw' && intensity >= 1 ? 'image/png' : 'image/jpeg';
+  // PNG to keep transparency (signatures) or crisp B&W; JPEG otherwise.
+  const type =
+    preserveAlpha || (filter === 'bw' && intensity >= 1)
+      ? 'image/png'
+      : 'image/jpeg';
   return canvas.toDataURL(type, 0.92);
 }
 
@@ -301,6 +309,107 @@ function documentBW(d, w, h) {
       d[di] = d[di + 1] = d[di + 2] = g;
     }
   }
+}
+
+// --- Basic adjustments --------------------------------------------------------
+
+/** Integral-image box blur of a single-channel Float array. */
+function boxBlur(src, w, h, radius) {
+  const iw = w + 1;
+  const integral = new Float64Array(iw * (h + 1));
+  for (let y = 0; y < h; y++) {
+    let rs = 0;
+    for (let x = 0; x < w; x++) {
+      rs += src[y * w + x];
+      integral[(y + 1) * iw + (x + 1)] = integral[y * iw + (x + 1)] + rs;
+    }
+  }
+  const out = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.max(0, y - radius);
+    const y1 = Math.min(h - 1, y + radius);
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.max(0, x - radius);
+      const x1 = Math.min(w - 1, x + radius);
+      const count = (x1 - x0 + 1) * (y1 - y0 + 1);
+      const sum =
+        integral[(y1 + 1) * iw + (x1 + 1)] -
+        integral[y0 * iw + (x1 + 1)] -
+        integral[(y1 + 1) * iw + x0] +
+        integral[y0 * iw + x0];
+      out[y * w + x] = sum / count;
+    }
+  }
+  return out;
+}
+
+export const ADJUST_DEFAULTS = {
+  brightness: 0, // -100..100
+  contrast: 0, // -100..100
+  warmth: 0, // -100..100 (white balance: + warmer, - cooler)
+  sharpness: 0, // 0..100
+  clarity: 0, // 0..100 (local/midtone contrast)
+};
+
+/** Apply basic photo adjustments to an image data URL. Returns a data URL. */
+export async function applyAdjustments(srcDataUrl, adj) {
+  const a = { ...ADJUST_DEFAULTS, ...(adj || {}) };
+  if (!a.brightness && !a.contrast && !a.warmth && !a.sharpness && !a.clarity) {
+    return srcDataUrl;
+  }
+  const img = await loadImage(srcDataUrl);
+  const canvas = imageToCanvas(img);
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const d = imgData.data;
+
+  let lum = null;
+  let blurS = null;
+  let blurL = null;
+  if (a.sharpness || a.clarity) {
+    lum = new Float32Array(w * h);
+    for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+      lum[p] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    }
+    if (a.sharpness) blurS = boxBlur(lum, w, h, 1);
+    if (a.clarity)
+      blurL = boxBlur(lum, w, h, Math.max(4, Math.round(Math.min(w, h) / 50)));
+  }
+
+  const cf = 1 + a.contrast / 100;
+  const bri = a.brightness * 1.5;
+  const warmR = a.warmth * 0.6;
+  const warmB = -a.warmth * 0.6;
+  const shp = (a.sharpness / 100) * 1.3;
+  const clr = (a.clarity / 100) * 0.8;
+
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    let r = d[i] + warmR + bri;
+    let g = d[i + 1] + bri;
+    let b = d[i + 2] + warmB + bri;
+    r = (r - 128) * cf + 128;
+    g = (g - 128) * cf + 128;
+    b = (b - 128) * cf + 128;
+    if (shp) {
+      const detail = (lum[p] - blurS[p]) * shp;
+      r += detail;
+      g += detail;
+      b += detail;
+    }
+    if (clr) {
+      const detailC = (lum[p] - blurL[p]) * clr;
+      r += detailC;
+      g += detailC;
+      b += detailC;
+    }
+    d[i] = clamp255(r);
+    d[i + 1] = clamp255(g);
+    d[i + 2] = clamp255(b);
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return canvas.toDataURL('image/jpeg', 0.92);
 }
 
 // --- Rotate / thumbnail -------------------------------------------------------

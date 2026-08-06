@@ -13,13 +13,19 @@
   object-fit: contain;
 }
 
-.filter-intensity {
+.adjust-bar {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 8px 14px;
   background: var(--panel);
   border-top: 1px solid #232a31;
+}
+.filter-intensity {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
   color: var(--text-dim);
 }
@@ -28,6 +34,35 @@
 }
 .filter-intensity-val {
   min-width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.adjust-panel {
+  background: var(--panel);
+  padding: 6px 14px 10px;
+  max-height: 38vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #1c2228;
+}
+.adjust-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.adjust-label {
+  min-width: 100px;
+}
+.adjust-row input {
+  flex: 1;
+}
+.adjust-val {
+  min-width: 34px;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }

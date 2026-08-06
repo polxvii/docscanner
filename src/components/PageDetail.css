@@ -96,6 +96,11 @@
   flex-direction: column;
   gap: 8px;
 }
+.ocr-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
 .ocr-panel textarea {
   width: 100%;
   resize: vertical;
