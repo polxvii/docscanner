@@ -312,7 +312,7 @@ export default function DocumentEditor({
       ) : (
         <div className="toolbar">
           <button className="btn primary grow" onClick={() => onAddPage(doc.id)}>
-            📷 Scan
+            📷 New scan
           </button>
           <label className="btn">
             🖼 Upload
@@ -328,7 +328,7 @@ export default function DocumentEditor({
             />
           </label>
           <label className="btn">
-            📄 PDF
+            📄 Import PDF
             <input
               type="file"
               accept="application/pdf,.pdf"
