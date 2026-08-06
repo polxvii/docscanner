@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/StoreContext.jsx';
 import { makeThumbnail } from '../lib/imaging.js';
+import { composePagePreview } from '../lib/exporter.js';
+import { applicableAnnotations } from '../lib/annotations.js';
 import PageDetail from './PageDetail.jsx';
 import ExportDialog from './ExportDialog.jsx';
 import './DocumentEditor.css';
@@ -20,6 +22,31 @@ export default function DocumentEditor({
 
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
+  const [thumbs, setThumbs] = useState({}); // pageId → preview WITH annotations
+
+  // Composite thumbnails for pages that have annotations so the grid shows the
+  // real page (text/signature included).
+  useEffect(() => {
+    if (!doc) return;
+    let alive = true;
+    (async () => {
+      const next = {};
+      for (const p of doc.pages) {
+        if (applicableAnnotations(doc, p).length > 0) {
+          try {
+            next[p.id] = await composePagePreview(doc, p, 420);
+          } catch {
+            /* fall back to processedImage */
+          }
+          if (!alive) return;
+        }
+      }
+      if (alive) setThumbs(next);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [doc]);
 
   // Pointer-drag reorder (works on touch).
   const [dragId, setDragId] = useState(null);
@@ -223,7 +250,7 @@ export default function DocumentEditor({
                     selecting ? toggleSelect(p.id) : setOpenPageId(p.id)
                   }
                 >
-                  <img src={p.processedImage} alt={`Page ${i + 1}`} />
+                  <img src={thumbs[p.id] || p.processedImage} alt={`Page ${i + 1}`} />
                   <span className="page-num">{i + 1}</span>
                   {selecting && (
                     <span className="page-check">

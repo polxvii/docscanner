@@ -2,8 +2,9 @@ import { useState } from 'react';
 import Modal from './Modal.jsx';
 import {
   exportPdf,
-  exportPageImage,
+  exportAllPageImages,
   shareOrDownload,
+  shareOrDownloadMany,
 } from '../lib/exporter.js';
 
 export default function ExportDialog({ doc, page, onClose }) {
@@ -18,20 +19,27 @@ export default function ExportDialog({ doc, page, onClose }) {
     setBusy(true);
     setStatus(null);
     try {
-      let result;
       if (kind === 'pdf') {
-        result = await exportPdf(doc, { pageSize, orientation });
+        const result = await exportPdf(doc, { pageSize, orientation });
+        const outcome = await shareOrDownload(result.blob, result.filename);
+        setStatus(
+          outcome === 'shared'
+            ? 'Shared.'
+            : outcome === 'cancelled'
+              ? 'Share cancelled.'
+              : `Downloaded ${result.filename}`
+        );
       } else {
-        result = await exportPageImage(doc, page, imgFormat);
+        const items = await exportAllPageImages(doc, imgFormat);
+        const outcome = await shareOrDownloadMany(items);
+        setStatus(
+          outcome === 'shared'
+            ? 'Shared.'
+            : outcome === 'cancelled'
+              ? 'Share cancelled.'
+              : `Downloaded ${items.length} image${items.length > 1 ? 's' : ''}`
+        );
       }
-      const outcome = await shareOrDownload(result.blob, result.filename);
-      setStatus(
-        outcome === 'shared'
-          ? 'Shared.'
-          : outcome === 'cancelled'
-            ? 'Share cancelled.'
-            : `Downloaded ${result.filename}`
-      );
     } catch (err) {
       setStatus('Export failed: ' + (err?.message || err));
     } finally {
@@ -51,9 +59,8 @@ export default function ExportDialog({ doc, page, onClose }) {
         <button
           className={`chip ${kind === 'image' ? 'active' : ''}`}
           onClick={() => setKind('image')}
-          disabled={!page}
         >
-          Image (this page)
+          Images (each page)
         </button>
       </div>
 

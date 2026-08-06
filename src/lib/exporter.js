@@ -157,3 +157,54 @@ export async function shareOrDownload(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   return 'downloaded';
 }
+
+/** Export every page of a document as its own image. */
+export async function exportAllPageImages(doc, format = 'png') {
+  const items = [];
+  for (let i = 0; i < doc.pages.length; i++) {
+    const r = await exportPageImage(doc, doc.pages[i], format);
+    const filename =
+      doc.pages.length > 1
+        ? r.filename.replace(/(\.\w+)$/, `-${i + 1}$1`)
+        : r.filename;
+    items.push({ blob: r.blob, filename });
+  }
+  return items;
+}
+
+/** Share several files at once (mobile), else download each. */
+export async function shareOrDownloadMany(items) {
+  try {
+    const files = items.map(
+      (it) => new File([it.blob], it.filename, { type: it.blob.type })
+    );
+    if (files.length && navigator.canShare && navigator.canShare({ files })) {
+      await navigator.share({ files });
+      return 'shared';
+    }
+  } catch (err) {
+    if (err?.name === 'AbortError') return 'cancelled';
+  }
+  for (const it of items) {
+    const url = URL.createObjectURL(it.blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = it.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    await new Promise((r) => setTimeout(r, 300)); // stagger so browsers allow all
+  }
+  return 'downloaded';
+}
+
+/** A small preview data URL of a page WITH its annotations composited. */
+export async function composePagePreview(doc, page, maxDim = 400) {
+  const img = await loadImage(page.processedImage);
+  const s = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * s));
+  const h = Math.max(1, Math.round(img.naturalHeight * s));
+  const canvas = await composePageCanvas(doc, page, w, h, 1);
+  return canvas.toDataURL('image/jpeg', 0.82);
+}

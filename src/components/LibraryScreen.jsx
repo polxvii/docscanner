@@ -7,6 +7,7 @@ import './LibraryScreen.css';
 
 export default function LibraryScreen({
   onNewScan,
+  onUploadImage,
   onOpenDoc,
   onImportPdf,
   importing,
@@ -212,6 +213,23 @@ export default function LibraryScreen({
         >
           📷 New scan
         </button>
+        <label className="btn">
+          🖼 Upload
+          <input
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file)
+                onUploadImage(
+                  file,
+                  selectedFolder === 'all' ? null : selectedFolder
+                );
+            }}
+          />
+        </label>
         <label className="btn">
           📄 Import PDF
           <input

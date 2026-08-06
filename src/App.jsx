@@ -61,6 +61,22 @@ export default function App() {
     setNav({ name: 'camera' });
   }, []);
 
+  const uploadImage = useCallback((file, folderId) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setDraft({
+        documentId: null,
+        folderId: folderId || null,
+        editingPageId: null,
+        filter: 'original',
+        originalImage: String(reader.result),
+      });
+      setNav({ name: 'crop' });
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
   const addPageToDoc = useCallback(
     (documentId) => {
       const doc = documents.find((d) => d.id === documentId);
@@ -224,6 +240,7 @@ export default function App() {
         <div className="app">
           <LibraryScreen
             onNewScan={startNewScan}
+            onUploadImage={uploadImage}
             onOpenDoc={(id) => setNav({ name: 'editor', documentId: id })}
             onImportPdf={importPdf}
             importing={importing}
