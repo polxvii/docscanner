@@ -17,9 +17,9 @@ export default function App() {
   const [draft, setDraft] = useState(null);
   const [importing, setImporting] = useState(null); // null | { progress, error }
 
-  // --- Import an existing PDF as a new document (each page → a page) ---
+  // --- Import a PDF: new document, or append its pages to an existing one ---
   const importPdf = useCallback(
-    async (file, folderId) => {
+    async (file, { folderId = null, documentId = null } = {}) => {
       if (!file) return;
       setImporting({ progress: 0, error: null });
       try {
@@ -28,26 +28,36 @@ export default function App() {
           setImporting({ progress: p, error: null })
         );
         if (!images.length) throw new Error('No pages found in PDF.');
-        const doc = await createDocument({
-          folderId: folderId || null,
-          name: file.name.replace(/\.pdf$/i, '') || 'Imported PDF',
-        });
-        const pages = images.map((img) => ({
+        const newPages = images.map((img) => ({
           id: uid(),
           originalImage: img,
           cropCorners: FULL_CORNERS,
           filter: 'original',
           processedImage: img,
         }));
-        const thumbnail = await makeThumbnail(pages[0].processedImage);
-        await saveDocument({ ...doc, pages, thumbnail });
+        let targetId = documentId;
+        if (documentId) {
+          const base = documents.find((d) => d.id === documentId);
+          if (!base) throw new Error('Document no longer exists.');
+          const pages = [...base.pages, ...newPages];
+          const thumbnail = await makeThumbnail(pages[0].processedImage);
+          await saveDocument({ ...base, pages, thumbnail });
+        } else {
+          const doc = await createDocument({
+            folderId,
+            name: file.name.replace(/\.pdf$/i, '') || 'Imported PDF',
+          });
+          const thumbnail = await makeThumbnail(newPages[0].processedImage);
+          await saveDocument({ ...doc, pages: newPages, thumbnail });
+          targetId = doc.id;
+        }
         setImporting(null);
-        setNav({ name: 'editor', documentId: doc.id });
+        setNav({ name: 'editor', documentId: targetId });
       } catch (err) {
         setImporting({ progress: 0, error: err?.message || 'Import failed' });
       }
     },
-    [createDocument, saveDocument]
+    [createDocument, saveDocument, documents]
   );
 
   // --- Scan session entry points ---
@@ -61,21 +71,24 @@ export default function App() {
     setNav({ name: 'camera' });
   }, []);
 
-  const uploadImage = useCallback((file, folderId) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setDraft({
-        documentId: null,
-        folderId: folderId || null,
-        editingPageId: null,
-        filter: 'original',
-        originalImage: String(reader.result),
-      });
-      setNav({ name: 'crop' });
-    };
-    reader.readAsDataURL(file);
-  }, []);
+  const uploadImage = useCallback(
+    (file, { folderId = null, documentId = null } = {}) => {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        setDraft({
+          documentId,
+          folderId,
+          editingPageId: null,
+          filter: 'original',
+          originalImage: String(reader.result),
+        });
+        setNav({ name: 'crop' });
+      };
+      reader.readAsDataURL(file);
+    },
+    []
+  );
 
   const addPageToDoc = useCallback(
     (documentId) => {
@@ -229,6 +242,10 @@ export default function App() {
             documentId={nav.documentId}
             onBack={toLibrary}
             onAddPage={addPageToDoc}
+            onUploadImage={uploadImage}
+            onImportPdf={importPdf}
+            importing={importing}
+            onDismissImportError={() => setImporting(null)}
             onReEditPage={(page) => reEditPage(page, nav.documentId)}
           />
         </div>

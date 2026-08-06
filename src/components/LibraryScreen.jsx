@@ -3,6 +3,7 @@ import { useStore } from '../store/StoreContext.jsx';
 import { exportBackupFile, importBackupFile } from '../lib/backup.js';
 import PromptModal from './PromptModal.jsx';
 import Modal from './Modal.jsx';
+import ImportingOverlay from './ImportingOverlay.jsx';
 import './LibraryScreen.css';
 
 export default function LibraryScreen({
@@ -223,10 +224,9 @@ export default function LibraryScreen({
               const file = e.target.files?.[0];
               e.target.value = '';
               if (file)
-                onUploadImage(
-                  file,
-                  selectedFolder === 'all' ? null : selectedFolder
-                );
+                onUploadImage(file, {
+                  folderId: selectedFolder === 'all' ? null : selectedFolder,
+                });
             }}
           />
         </label>
@@ -240,44 +240,15 @@ export default function LibraryScreen({
               const file = e.target.files?.[0];
               e.target.value = '';
               if (file)
-                onImportPdf(
-                  file,
-                  selectedFolder === 'all' ? null : selectedFolder
-                );
+                onImportPdf(file, {
+                  folderId: selectedFolder === 'all' ? null : selectedFolder,
+                });
             }}
           />
         </label>
       </div>
 
-      {importing && (
-        <div className="modal-backdrop">
-          <div className="modal" style={{ maxWidth: 320, textAlign: 'center' }}>
-            {importing.error ? (
-              <>
-                <h3>Couldn’t import PDF</h3>
-                <p style={{ color: 'var(--text-dim)' }}>{importing.error}</p>
-                <div className="actions">
-                  <button className="btn" onClick={onDismissImportError}>
-                    Close
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <h3>Importing PDF…</h3>
-                <div className="progress" style={{ margin: '12px 0' }}>
-                  <span
-                    style={{ width: `${Math.round(importing.progress * 100)}%` }}
-                  />
-                </div>
-                <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>
-                  Rendering pages… {Math.round(importing.progress * 100)}%
-                </p>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <ImportingOverlay importing={importing} onDismiss={onDismissImportError} />
 
       {/* Prompts / confirmations */}
       {prompt?.type === 'new-folder' && (

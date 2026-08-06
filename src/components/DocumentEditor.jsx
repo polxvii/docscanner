@@ -5,12 +5,17 @@ import { composePagePreview } from '../lib/exporter.js';
 import { applicableAnnotations } from '../lib/annotations.js';
 import PageDetail from './PageDetail.jsx';
 import ExportDialog from './ExportDialog.jsx';
+import ImportingOverlay from './ImportingOverlay.jsx';
 import './DocumentEditor.css';
 
 export default function DocumentEditor({
   documentId,
   onBack,
   onAddPage,
+  onUploadImage,
+  onImportPdf,
+  importing,
+  onDismissImportError,
   onReEditPage,
 }) {
   const { documents, saveDocument } = useStore();
@@ -307,8 +312,34 @@ export default function DocumentEditor({
       ) : (
         <div className="toolbar">
           <button className="btn primary grow" onClick={() => onAddPage(doc.id)}>
-            + Add page
+            📷 Scan
           </button>
+          <label className="btn">
+            🖼 Upload
+            <input
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (f) onUploadImage(f, { documentId: doc.id });
+              }}
+            />
+          </label>
+          <label className="btn">
+            📄 PDF
+            <input
+              type="file"
+              accept="application/pdf,.pdf"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (f) onImportPdf(f, { documentId: doc.id });
+              }}
+            />
+          </label>
         </div>
       )}
 
@@ -319,6 +350,7 @@ export default function DocumentEditor({
           onClose={() => setExportTarget(null)}
         />
       )}
+      <ImportingOverlay importing={importing} onDismiss={onDismissImportError} />
     </div>
   );
 }
