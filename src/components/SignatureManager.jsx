@@ -48,6 +48,8 @@ export default function SignatureManager({ onPick, onClose }) {
 }
 
 function SavedTray({ signatures, onPick, onDelete, onEmptyCreate }) {
+  const [confirmId, setConfirmId] = useState(null);
+  const confirmSig = signatures.find((s) => s.id === confirmId);
   if (!signatures.length) {
     return (
       <div className="empty" style={{ padding: '24px 8px' }}>
@@ -69,13 +71,35 @@ function SavedTray({ signatures, onPick, onDelete, onEmptyCreate }) {
             <span title={s.name}>{s.name}</span>
             <button
               className="btn danger small"
-              onClick={() => onDelete(s.id)}
+              onClick={() => setConfirmId(s.id)}
             >
               Delete
             </button>
           </div>
         </div>
       ))}
+
+      {confirmSig && (
+        <Modal title="Delete signature?" onClose={() => setConfirmId(null)}>
+          <p style={{ color: 'var(--text-dim)' }}>
+            “{confirmSig.name}” will be removed from your saved signatures.
+          </p>
+          <div className="actions">
+            <button className="btn" onClick={() => setConfirmId(null)}>
+              Cancel
+            </button>
+            <button
+              className="btn danger"
+              onClick={() => {
+                onDelete(confirmId);
+                setConfirmId(null);
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -88,9 +112,11 @@ function CreateSignature({ onSaved, onUse }) {
   const [processed, setProcessed] = useState(null);
   const [name, setName] = useState('Signature');
   const [cropSrc, setCropSrc] = useState(null); // uploaded photo awaiting crop
+  const [cropped, setCropped] = useState(null); // cropped, before bg removal
 
   const canvasRef = useRef(null);
   const drawingRef = useRef(false);
+  const origRef = useRef(null); // original uploaded photo (for re-crop)
 
   // Recompute the transparent PNG whenever source or sliders change.
   useEffect(() => {
@@ -158,7 +184,10 @@ function CreateSignature({ onSaved, onUse }) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setCropSrc(String(reader.result)); // crop first
+    reader.onload = () => {
+      origRef.current = String(reader.result);
+      setCropSrc(origRef.current); // crop first
+    };
     reader.readAsDataURL(file);
     e.target.value = '';
   };
@@ -213,12 +242,43 @@ function CreateSignature({ onSaved, onUse }) {
       {cropSrc && (
         <SignatureCrop
           src={cropSrc}
-          onDone={(cropped) => {
+          onDone={(c) => {
             setCropSrc(null);
-            setRaw(cropped);
+            setCropped(c);
           }}
           onCancel={() => setCropSrc(null)}
         />
+      )}
+
+      {cropped && !raw && (
+        <div>
+          <p style={{ color: 'var(--text-dim)', fontSize: 13, margin: '0 0 8px' }}>
+            Cropped. Now remove the background.
+          </p>
+          <div className="sig-preview" style={{ background: '#fff' }}>
+            <img src={cropped} alt="Cropped signature" />
+          </div>
+          <div className="actions">
+            <button
+              className="btn"
+              onClick={() => {
+                setCropped(null);
+                if (origRef.current) setCropSrc(origRef.current);
+              }}
+            >
+              Re-crop
+            </button>
+            <button
+              className="btn primary"
+              onClick={() => {
+                setRaw(cropped);
+                setCropped(null);
+              }}
+            >
+              Remove background
+            </button>
+          </div>
+        </div>
       )}
 
       {raw && !cropSrc && (

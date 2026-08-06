@@ -51,6 +51,15 @@
   background: var(--panel);
   border-top: 1px solid #232a31;
 }
+/* `.row` is only flex inside modals; make the editor rows lay out horizontally. */
+.ann-editor .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ann-editor .grow {
+  flex: 1;
+}
 .ann-editor input[type='color'] {
   width: 40px;
   height: 36px;
