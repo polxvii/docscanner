@@ -2,7 +2,6 @@
 // fallback. Each page image is composited with its applicable annotations
 // (document-scoped + that page's own) at ratio positions scaled to page size.
 
-import { jsPDF } from 'jspdf';
 import { loadImage } from './imaging.js';
 import { contentRect } from './geometry.js';
 import { applicableAnnotations } from './annotations.js';
@@ -81,6 +80,7 @@ async function composePageCanvas(doc, page, pageW, pageH, scale) {
  */
 export async function exportPdf(doc, opts) {
   const { pageSize = 'a4', orientation = 'portrait' } = opts || {};
+  const { jsPDF } = await import('jspdf'); // lazy: keeps jsPDF out of the main bundle
   let pdf = null;
 
   for (let i = 0; i < doc.pages.length; i++) {

@@ -16,6 +16,20 @@ export function StoreProvider({ children }) {
   const [folders, setFolders] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [signatures, setSignatures] = useState([]);
+  const [storageError, setStorageError] = useState(null);
+
+  const isQuota = (e) =>
+    e &&
+    (e.name === 'QuotaExceededError' ||
+      e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+      /quota|storage/i.test(e.message || ''));
+  const reportStorageError = (e) =>
+    setStorageError(
+      isQuota(e)
+        ? 'Storage is full. Export a backup, then delete some documents to free space.'
+        : 'Couldn’t save: ' + (e?.message || 'unknown error')
+    );
+  const clearStorageError = () => setStorageError(null);
 
   const reloadAll = useCallback(async () => {
     try {
@@ -68,7 +82,11 @@ export function StoreProvider({ children }) {
   // --- Documents ---
   const saveDocument = useCallback(async (doc) => {
     const next = { ...doc, updatedAt: Date.now() };
-    await db.putDocument(next);
+    try {
+      await db.putDocument(next);
+    } catch (e) {
+      reportStorageError(e);
+    }
     setDocuments((prev) => {
       const exists = prev.some((d) => d.id === next.id);
       return exists
@@ -91,7 +109,11 @@ export function StoreProvider({ children }) {
         pages: [],
         annotations: [],
       };
-      await db.putDocument(doc);
+      try {
+        await db.putDocument(doc);
+      } catch (e) {
+        reportStorageError(e);
+      }
       setDocuments((prev) => [...prev, doc]);
       return doc;
     },
@@ -132,7 +154,11 @@ export function StoreProvider({ children }) {
       dataUrl: sig.dataUrl,
       createdAt: sig.createdAt || Date.now(),
     };
-    await db.putSignature(full);
+    try {
+      await db.putSignature(full);
+    } catch (e) {
+      reportStorageError(e);
+    }
     setSignatures((prev) => {
       const exists = prev.some((s) => s.id === full.id);
       return exists
@@ -163,6 +189,8 @@ export function StoreProvider({ children }) {
       saveSignature,
       deleteSignature,
       reloadAll,
+      storageError,
+      clearStorageError,
     }),
     [
       loading,
@@ -179,6 +207,7 @@ export function StoreProvider({ children }) {
       saveSignature,
       deleteSignature,
       reloadAll,
+      storageError,
     ]
   );
 

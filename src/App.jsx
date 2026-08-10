@@ -11,7 +11,8 @@ import DocumentEditor from './components/DocumentEditor.jsx';
 import './App.css';
 
 export default function App() {
-  const { documents, createDocument, saveDocument } = useStore();
+  const { documents, createDocument, saveDocument, storageError, clearStorageError } =
+    useStore();
 
   const [nav, setNav] = useState({ name: 'library' });
   const [draft, setDraft] = useState(null);
@@ -203,67 +204,75 @@ export default function App() {
   }, []);
 
   // --- Render ---
+  let screen;
   switch (nav.name) {
     case 'camera':
-      return (
-        <div className="app">
-          <CameraView onCapture={onCameraCapture} onBack={toLibrary} />
-        </div>
-      );
-
+      screen = <CameraView onCapture={onCameraCapture} onBack={toLibrary} />;
+      break;
     case 'crop':
-      return (
-        <div className="app">
-          <CropScreen
-            image={draft.originalImage}
-            initialCorners={draft.cropCorners}
-            onConfirm={onCropConfirm}
-            onCancel={cropCancel}
-          />
-        </div>
+      screen = (
+        <CropScreen
+          image={draft.originalImage}
+          initialCorners={draft.cropCorners}
+          onConfirm={onCropConfirm}
+          onCancel={cropCancel}
+        />
       );
-
+      break;
     case 'filter':
-      return (
-        <div className="app">
-          <FilterScreen
-            image={draft.processedImage}
-            initialFilter={draft.filter}
-            onConfirm={commitPage}
-            onCancel={filterCancel}
-          />
-        </div>
+      screen = (
+        <FilterScreen
+          image={draft.processedImage}
+          initialFilter={draft.filter}
+          onConfirm={commitPage}
+          onCancel={filterCancel}
+        />
       );
-
+      break;
     case 'editor':
-      return (
-        <div className="app">
-          <DocumentEditor
-            documentId={nav.documentId}
-            onBack={toLibrary}
-            onAddPage={addPageToDoc}
-            onUploadImage={uploadImage}
-            onImportPdf={importPdf}
-            importing={importing}
-            onDismissImportError={() => setImporting(null)}
-            onReEditPage={(page) => reEditPage(page, nav.documentId)}
-          />
-        </div>
+      screen = (
+        <DocumentEditor
+          documentId={nav.documentId}
+          onBack={toLibrary}
+          onAddPage={addPageToDoc}
+          onUploadImage={uploadImage}
+          onImportPdf={importPdf}
+          importing={importing}
+          onDismissImportError={() => setImporting(null)}
+          onReEditPage={(page) => reEditPage(page, nav.documentId)}
+        />
       );
-
+      break;
     case 'library':
     default:
-      return (
-        <div className="app">
-          <LibraryScreen
-            onNewScan={startNewScan}
-            onUploadImage={uploadImage}
-            onOpenDoc={(id) => setNav({ name: 'editor', documentId: id })}
-            onImportPdf={importPdf}
-            importing={importing}
-            onDismissImportError={() => setImporting(null)}
-          />
-        </div>
+      screen = (
+        <LibraryScreen
+          onNewScan={startNewScan}
+          onUploadImage={uploadImage}
+          onOpenDoc={(id) => setNav({ name: 'editor', documentId: id })}
+          onImportPdf={importPdf}
+          importing={importing}
+          onDismissImportError={() => setImporting(null)}
+        />
       );
   }
+
+  return (
+    <div className="app">
+      {screen}
+      {storageError && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{ maxWidth: 340, textAlign: 'center' }}>
+            <h3>Storage problem</h3>
+            <p style={{ color: 'var(--text-dim)' }}>{storageError}</p>
+            <div className="actions">
+              <button className="btn primary" onClick={clearStorageError}>
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
