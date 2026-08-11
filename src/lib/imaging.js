@@ -512,22 +512,33 @@ export async function makeThumbnail(srcDataUrl, maxDim = 240) {
 // --- Lightweight document auto-detect -----------------------------------------
 
 /**
- * Estimate the document rectangle by separating bright "paper" from a darker
- * background (Otsu threshold + row/column projections). Returns normalised
- * ordered corners [TL,TR,BR,BL], or null if nothing plausible is found.
- * Axis-aligned — a good starting box the user fine-tunes.
+ * Detect the document quadrilateral — handles a TILTED page, not just an
+ * axis-aligned box. Tries three methods in order, returning the first that
+ * yields a plausible quad:
+ *   1. Colour flood from the border (a smooth backdrop fills; the sharp page
+ *      edge stops it) → largest foreground blob. Self-rejects if it leaks.
+ *   2. Otsu split + border-class: whichever brightness class dominates the
+ *      image border is the background, the other is the page. Robust for both
+ *      dark-on-light and light-on-dark, and can't catastrophically leak.
+ *   3. Axis-aligned brightness-projection box.
+ * A blob's corners are its diagonal extremes (min/max of x±y), giving a real
+ * tilted quad. Returns normalised ordered corners [TL,TR,BR,BL], or null.
  */
 export async function autoDetectCorners(srcDataUrl) {
   const img = await loadImage(srcDataUrl);
-  const W = Math.min(500, img.naturalWidth || 500);
-  const H = Math.max(1, Math.round((W * (img.naturalHeight || 1)) / (img.naturalWidth || 1)));
+  const iw = img.naturalWidth || 500;
+  const ih = img.naturalHeight || 1;
+  const W = Math.min(440, iw);
+  const H = Math.max(1, Math.round((W * ih) / iw));
   const canvas = document.createElement('canvas');
   canvas.width = W;
   canvas.height = H;
-  canvas.getContext('2d').drawImage(img, 0, 0, W, H);
-  const data = canvas.getContext('2d').getImageData(0, 0, W, H).data;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, W, H);
+  const data = ctx.getImageData(0, 0, W, H).data;
+  const N = W * H;
 
-  const gray = new Uint8Array(W * H);
+  const gray = new Uint8Array(N);
   const hist = new Array(256).fill(0);
   for (let i = 0, p = 0; i < data.length; i += 4, p++) {
     const l = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]) | 0;
@@ -535,8 +546,15 @@ export async function autoDetectCorners(srcDataUrl) {
     hist[l]++;
   }
 
-  // Otsu threshold.
-  const total = W * H;
+  return (
+    floodQuad(data, W, H) ||
+    thresholdQuad(gray, hist, W, H) ||
+    projectionCorners(gray, hist, W, H)
+  );
+}
+
+/** Otsu threshold from a 256-bin histogram over `total` pixels. */
+function otsuThreshold(hist, total) {
   let sum = 0;
   for (let t = 0; t < 256; t++) sum += t * hist[t];
   let sumB = 0;
@@ -557,8 +575,182 @@ export async function autoDetectCorners(srcDataUrl) {
       thresh = t;
     }
   }
+  return thresh;
+}
 
-  // Column / row bright fractions.
+/**
+ * Largest 4-connected blob of `mask` (1 = foreground) → an ordered corner quad
+ * from its diagonal extremes, or null if the blob is implausibly small/large
+ * or degenerate.
+ */
+function blobCorners(mask, W, H) {
+  const N = W * H;
+  const seen = new Uint8Array(N);
+  const queue = new Int32Array(N);
+  let best = null;
+  let bestSize = 0;
+  for (let p0 = 0; p0 < N; p0++) {
+    if (!mask[p0] || seen[p0]) continue;
+    let head = 0;
+    let tail = 0;
+    queue[tail++] = p0;
+    seen[p0] = 1;
+    let size = 0;
+    let sMin = Infinity;
+    let sMax = -Infinity;
+    let dMin = Infinity;
+    let dMax = -Infinity;
+    let tl = p0;
+    let tr = p0;
+    let br = p0;
+    let bl = p0;
+    while (head < tail) {
+      const p = queue[head++];
+      size++;
+      const x = p % W;
+      const y = (p / W) | 0;
+      const s = x + y;
+      const dd = x - y;
+      if (s < sMin) { sMin = s; tl = p; }
+      if (s > sMax) { sMax = s; br = p; }
+      if (dd > dMax) { dMax = dd; tr = p; }
+      if (dd < dMin) { dMin = dd; bl = p; }
+      if (x > 0 && mask[p - 1] && !seen[p - 1]) { seen[p - 1] = 1; queue[tail++] = p - 1; }
+      if (x < W - 1 && mask[p + 1] && !seen[p + 1]) { seen[p + 1] = 1; queue[tail++] = p + 1; }
+      if (y > 0 && mask[p - W] && !seen[p - W]) { seen[p - W] = 1; queue[tail++] = p - W; }
+      if (y < H - 1 && mask[p + W] && !seen[p + W]) { seen[p + W] = 1; queue[tail++] = p + W; }
+    }
+    if (size > bestSize) {
+      bestSize = size;
+      best = { tl, tr, br, bl };
+    }
+  }
+  if (!best) return null;
+  const frac = bestSize / N;
+  if (frac < 0.1 || frac > 0.95) return null;
+  const pt = (p) => ({ x: (p % W) / W, y: ((p / W) | 0) / H });
+  const quad = orderCorners([pt(best.tl), pt(best.tr), pt(best.br), pt(best.bl)]);
+  return isPlausibleQuad(quad) ? quad : null;
+}
+
+/**
+ * Method 1 — colour flood from the border. Fills the smooth backdrop and halts
+ * at the sharp page edge; the largest non-background blob is the page. Returns
+ * null when it leaks into the page (blob too small) so the caller can fall back.
+ */
+function floodQuad(data, W, H) {
+  const N = W * H;
+  const R = new Float32Array(N);
+  const G = new Float32Array(N);
+  const B = new Float32Array(N);
+  for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+    R[p] = data[i];
+    G[p] = data[i + 1];
+    B[p] = data[i + 2];
+  }
+  // Blur a touch so noise/texture/JPEG don't create false walls or leak points.
+  const Rb = boxBlur(R, W, H, 1);
+  const Gb = boxBlur(G, W, H, 1);
+  const Bb = boxBlur(B, W, H, 1);
+
+  const STEP2 = 22 * 22; // squared RGB step a neighbour may join across
+  const bg = new Uint8Array(N);
+  const stack = new Int32Array(N);
+  let sp = 0;
+  const seed = (p) => {
+    if (!bg[p]) {
+      bg[p] = 1;
+      stack[sp++] = p;
+    }
+  };
+  for (let x = 0; x < W; x++) {
+    seed(x);
+    seed((H - 1) * W + x);
+  }
+  for (let y = 0; y < H; y++) {
+    seed(y * W);
+    seed(y * W + (W - 1));
+  }
+  while (sp > 0) {
+    const p = stack[--sp];
+    const x = p % W;
+    const y = (p / W) | 0;
+    const pr = Rb[p];
+    const pg = Gb[p];
+    const pb = Bb[p];
+    const tryN = (q) => {
+      if (bg[q]) return;
+      const dr = Rb[q] - pr;
+      const dg = Gb[q] - pg;
+      const db = Bb[q] - pb;
+      if (dr * dr + dg * dg + db * db <= STEP2) {
+        bg[q] = 1;
+        stack[sp++] = q;
+      }
+    };
+    if (x > 0) tryN(p - 1);
+    if (x < W - 1) tryN(p + 1);
+    if (y > 0) tryN(p - W);
+    if (y < H - 1) tryN(p + W);
+  }
+
+  const fg = new Uint8Array(N);
+  for (let p = 0; p < N; p++) fg[p] = bg[p] ? 0 : 1;
+  return blobCorners(fg, W, H);
+}
+
+/**
+ * Method 2 — Otsu split + border-class. The brightness class covering most of
+ * the image border is the background; the other class is the page. Handles
+ * dark-on-light and light-on-dark alike, and can't leak through a soft edge.
+ */
+function thresholdQuad(gray, hist, W, H) {
+  const N = W * H;
+  const thresh = otsuThreshold(hist, N);
+  let bright = 0;
+  let count = 0;
+  const acc = (p) => {
+    count++;
+    if (gray[p] > thresh) bright++;
+  };
+  for (let x = 0; x < W; x++) {
+    acc(x);
+    acc((H - 1) * W + x);
+  }
+  for (let y = 1; y < H - 1; y++) {
+    acc(y * W);
+    acc(y * W + (W - 1));
+  }
+  const brightBorder = bright / count;
+  const docIsBright = brightBorder < 0.5;
+  const bgBorderFrac = docIsBright ? 1 - brightBorder : brightBorder;
+  if (bgBorderFrac < 0.6) return null; // background doesn't clearly hug the border
+  const fg = new Uint8Array(N);
+  for (let p = 0; p < N; p++) fg[p] = (gray[p] > thresh) === docIsBright ? 1 : 0;
+  return blobCorners(fg, W, H);
+}
+
+/** Reject degenerate detections (too small, or nearly a line). */
+function isPlausibleQuad(c) {
+  const xs = c.map((p) => p.x);
+  const ys = c.map((p) => p.y);
+  const w = Math.max(...xs) - Math.min(...xs);
+  const h = Math.max(...ys) - Math.min(...ys);
+  if (w < 0.3 || h < 0.3) return false;
+  let area = 0;
+  for (let i = 0; i < 4; i++) {
+    const j = (i + 1) % 4;
+    area += c[i].x * c[j].y - c[j].x * c[i].y;
+  }
+  return Math.abs(area) / 2 >= 0.1;
+}
+
+/**
+ * Method 3 — axis-aligned box from an Otsu brightness split + row/column
+ * projections. Returns ordered corners [TL,TR,BR,BL] or null.
+ */
+function projectionCorners(gray, hist, W, H) {
+  const thresh = otsuThreshold(hist, W * H);
   const colCount = new Int32Array(W);
   const rowCount = new Int32Array(H);
   for (let y = 0; y < H; y++) {
