@@ -92,6 +92,33 @@
   object-fit: contain;
 }
 
+/* Tap-to-focus ring cue. */
+.focus-ring {
+  position: absolute;
+  width: 76px;
+  height: 76px;
+  margin: -38px 0 0 -38px; /* centre on the tapped point */
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  animation: focus-pop 0.7s ease-out forwards;
+}
+@keyframes focus-pop {
+  0% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+  25% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+}
+
 /* --- Status badges -------------------------------------------------------- */
 .badge {
   position: absolute;

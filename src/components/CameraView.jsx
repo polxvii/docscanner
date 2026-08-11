@@ -3,8 +3,12 @@ import './CameraView.css';
 
 export default function CameraView({ onCapture, onBack }) {
   const videoRef = useRef(null);
+  const stageRef = useRef(null);
+  const trackRef = useRef(null);
   const [camReady, setCamReady] = useState(false);
   const [camError, setCamError] = useState(null);
+  const [canFocus, setCanFocus] = useState(false);
+  const [focusRing, setFocusRing] = useState(null); // { x, y, id }
 
   useEffect(() => {
     let stream = null;
@@ -32,6 +36,13 @@ export default function CameraView({ onCapture, onBack }) {
         if (!video) return;
         video.srcObject = stream;
         await video.play();
+        const track = stream.getVideoTracks()[0] || null;
+        trackRef.current = track;
+        const caps = track?.getCapabilities?.() || {};
+        setCanFocus(
+          'pointsOfInterest' in caps ||
+            (Array.isArray(caps.focusMode) && caps.focusMode.length > 0)
+        );
         setCamReady(true);
         setCamError(null);
       } catch (err) {
@@ -48,9 +59,61 @@ export default function CameraView({ onCapture, onBack }) {
     start();
     return () => {
       cancelled = true;
+      trackRef.current = null;
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
   }, []);
+
+  // Clear the focus ring shortly after it appears (animation is ~0.7s).
+  useEffect(() => {
+    if (!focusRing) return;
+    const t = setTimeout(() => setFocusRing(null), 750);
+    return () => clearTimeout(t);
+  }, [focusRing]);
+
+  // Ask the camera to focus on the tapped point. Coordinates are normalised to
+  // the image frame (object-fit: contain, so the whole frame is visible).
+  const focusAt = useCallback(async (nx, ny) => {
+    const track = trackRef.current;
+    if (!track?.getCapabilities || !track.applyConstraints) return;
+    const caps = track.getCapabilities() || {};
+    const adv = {};
+    if ('pointsOfInterest' in caps) adv.pointsOfInterest = [{ x: nx, y: ny }];
+    if (Array.isArray(caps.focusMode)) {
+      if (caps.focusMode.includes('single-shot')) adv.focusMode = 'single-shot';
+      else if (caps.focusMode.includes('continuous'))
+        adv.focusMode = 'continuous';
+      else if (caps.focusMode.includes('manual')) adv.focusMode = 'manual';
+    }
+    if (!Object.keys(adv).length) return;
+    try {
+      await track.applyConstraints({ advanced: [adv] });
+    } catch {
+      /* device rejected the focus request; the ring cue still fired */
+    }
+  }, []);
+
+  const onStageTap = useCallback(
+    (e) => {
+      const video = videoRef.current;
+      const stage = stageRef.current;
+      if (!video || !video.videoWidth || !stage || camError) return;
+      const vr = video.getBoundingClientRect();
+      const sr = stage.getBoundingClientRect();
+      // Ring position, relative to the stage.
+      setFocusRing({ x: e.clientX - sr.left, y: e.clientY - sr.top, id: Date.now() });
+      // Map the tap to normalised image coordinates (letterboxed "contain").
+      const scale = Math.min(vr.width / video.videoWidth, vr.height / video.videoHeight);
+      const dispW = video.videoWidth * scale;
+      const dispH = video.videoHeight * scale;
+      const offX = (vr.width - dispW) / 2;
+      const offY = (vr.height - dispH) / 2;
+      const nx = Math.min(1, Math.max(0, (e.clientX - vr.left - offX) / dispW));
+      const ny = Math.min(1, Math.max(0, (e.clientY - vr.top - offY) / dispH));
+      focusAt(nx, ny);
+    },
+    [camError, focusAt]
+  );
 
   const capture = useCallback(() => {
     const video = videoRef.current;
@@ -83,7 +146,7 @@ export default function CameraView({ onCapture, onBack }) {
         <span>New scan</span>
       </div>
 
-      <div className="camera-stage">
+      <div className="camera-stage" ref={stageRef} onClick={onStageTap}>
         <video
           ref={videoRef}
           className="camera-video"
@@ -101,9 +164,20 @@ export default function CameraView({ onCapture, onBack }) {
               <span className="corner bl" />
             </div>
             <div className="badge badge-top muted">
-              Fit the document in view, then capture
+              {canFocus
+                ? 'Tap to focus, then capture'
+                : 'Fit the document in view, then capture'}
             </div>
           </>
+        )}
+
+        {focusRing && (
+          <span
+            key={focusRing.id}
+            className="focus-ring"
+            style={{ left: focusRing.x, top: focusRing.y }}
+            aria-hidden="true"
+          />
         )}
 
         {camError && <CameraError kind={camError} />}
