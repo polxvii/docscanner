@@ -101,7 +101,7 @@ export async function exportPdf(doc, opts) {
     }
 
     const canvas = await composePageCanvas(doc, page, pageW, pageH, scale);
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
     const orient = pageW >= pageH ? 'landscape' : 'portrait';
     const format = [pageW, pageH];
 
@@ -131,7 +131,7 @@ export async function exportPageImage(doc, page, format = 'png') {
   );
   const mime = format === 'png' ? 'image/png' : 'image/jpeg';
   const ext = format === 'png' ? 'png' : 'jpg';
-  const blob = await new Promise((res) => canvas.toBlob(res, mime, 0.92));
+  const blob = await new Promise((res) => canvas.toBlob(res, mime, 0.95));
   return { blob, filename: `${safeName(doc.name)}.${ext}` };
 }
 

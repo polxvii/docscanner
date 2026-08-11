@@ -68,7 +68,22 @@ function projectiveTransform(from, to) {
   return solve(A, b); // [a,b,c,d,e,f,g,h]
 }
 
-const MAX_WARP_DIM = 1600;
+// Keep documents sharp: cap the long edge high enough for crisp text (~215 DPI
+// on A4) while bounding memory/CPU for the pure-JS warp.
+const MAX_WARP_DIM = 2600;
+// One quality knob for every master-image encode. Higher = sharper, bigger.
+const JPEG_Q = 0.95;
+
+/** True when the crop quad is (approximately) the whole frame — no perspective. */
+function isFullRect(c) {
+  const e = 0.004;
+  return (
+    Math.abs(c[0].x) < e && Math.abs(c[0].y) < e &&
+    Math.abs(c[1].x - 1) < e && Math.abs(c[1].y) < e &&
+    Math.abs(c[2].x - 1) < e && Math.abs(c[2].y - 1) < e &&
+    Math.abs(c[3].x) < e && Math.abs(c[3].y - 1) < e
+  );
+}
 
 /**
  * Perspective-warp the image using normalised corners [TL,TR,BR,BL] (0..1).
@@ -77,6 +92,25 @@ const MAX_WARP_DIM = 1600;
  */
 export async function warpPerspective(srcDataUrl, cornersNorm) {
   const img = await loadImage(srcDataUrl);
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+
+  // No crop needed → skip the lossy per-pixel warp entirely. Keep the source
+  // untouched when it's already within the cap (no re-encode = sharpest), or
+  // do a single high-quality downscale via the browser's own resampler.
+  if (isFullRect(cornersNorm)) {
+    const s = Math.min(1, MAX_WARP_DIM / Math.max(iw, ih));
+    if (s === 1) return srcDataUrl;
+    const dc = document.createElement('canvas');
+    dc.width = Math.max(1, Math.round(iw * s));
+    dc.height = Math.max(1, Math.round(ih * s));
+    const dcx = dc.getContext('2d');
+    dcx.imageSmoothingEnabled = true;
+    dcx.imageSmoothingQuality = 'high';
+    dcx.drawImage(img, 0, 0, dc.width, dc.height);
+    return dc.toDataURL('image/jpeg', JPEG_Q);
+  }
+
   const sc = imageToCanvas(img);
   const sw = sc.width;
   const sh = sc.height;
@@ -138,7 +172,7 @@ export async function warpPerspective(srcDataUrl, cornersNorm) {
     }
   }
   octx.putImageData(dstImg, 0, 0);
-  return out.toDataURL('image/jpeg', 0.92);
+  return out.toDataURL('image/jpeg', JPEG_Q);
 }
 
 // --- Filters ------------------------------------------------------------------
@@ -254,7 +288,7 @@ export async function applyFilter(
     preserveAlpha || (filter === 'bw' && intensity >= 1)
       ? 'image/png'
       : 'image/jpeg';
-  return canvas.toDataURL(type, 0.92);
+  return canvas.toDataURL(type, JPEG_Q);
 }
 
 /**
@@ -409,7 +443,7 @@ export async function applyAdjustments(srcDataUrl, adj) {
     d[i + 2] = clamp255(b);
   }
   ctx.putImageData(imgData, 0, 0);
-  return canvas.toDataURL('image/jpeg', 0.92);
+  return canvas.toDataURL('image/jpeg', JPEG_Q);
 }
 
 // --- Rotate / thumbnail -------------------------------------------------------
@@ -427,7 +461,7 @@ export async function rotateImage(srcDataUrl, deg) {
   ctx.translate(canvas.width / 2, canvas.height / 2);
   ctx.rotate(rad);
   ctx.drawImage(img, -w / 2, -h / 2);
-  return canvas.toDataURL('image/jpeg', 0.92);
+  return canvas.toDataURL('image/jpeg', JPEG_Q);
 }
 
 /** Rotate an image by an arbitrary angle (expands canvas, white background). */
@@ -451,7 +485,7 @@ export async function rotateImageAny(srcDataUrl, deg) {
   ctx.translate(nw / 2, nh / 2);
   ctx.rotate(rad);
   ctx.drawImage(img, -w / 2, -h / 2);
-  return canvas.toDataURL('image/jpeg', 0.92);
+  return canvas.toDataURL('image/jpeg', JPEG_Q);
 }
 
 export function rotateCornersNorm(corners, deg) {

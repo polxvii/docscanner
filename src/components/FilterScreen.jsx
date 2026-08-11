@@ -80,6 +80,15 @@ export default function FilterScreen({
   const resetAdj = () => setAdj(ADJUST_DEFAULTS);
   const adjActive = ADJUSTS.some((a) => adj[a.key] !== 0);
 
+  // One-tap document sharpen: unsharp-mask detail + midtone clarity + a touch of
+  // contrast, tuned so text reads crisp. Opens the panel so it's still tweakable.
+  const ENHANCE = { brightness: 0, contrast: 10, warmth: 0, sharpness: 48, clarity: 24 };
+  const enhanced = ADJUSTS.every((a) => adj[a.key] === ENHANCE[a.key]);
+  const toggleEnhance = () => {
+    setAdj(enhanced ? ADJUST_DEFAULTS : ENHANCE);
+    setAdjustOpen(true);
+  };
+
   return (
     <div className="screen">
       <div className="topbar">
@@ -119,6 +128,12 @@ export default function FilterScreen({
           onClick={() => setAdjustOpen((o) => !o)}
         >
           Adjust{adjActive ? ' •' : ''} {adjustOpen ? '▲' : '▾'}
+        </button>
+        <button
+          className={`btn small ${enhanced ? 'primary' : ''}`}
+          onClick={toggleEnhance}
+        >
+          ✨ Enhance
         </button>
         {selected !== 'original' && (
           <div className="filter-intensity">
