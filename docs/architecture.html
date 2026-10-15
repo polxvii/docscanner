@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DocScanner — Architecture Diagrams</title>
+<style>
+  :root {
+    --bg:#0b0d10; --panel:#151a1f; --panel2:#1b2128; --border:#2a323b;
+    --text:#eef2f6; --dim:#8a97a3; --accent:#00e676; --blue:#4aa3ff;
+    --purple:#b78cff; --amber:#ffb74d; --red:#ff6b6b;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55; -webkit-font-smoothing:antialiased; }
+  a { color:var(--accent); }
+  header.top {
+    position:sticky; top:0; z-index:10; backdrop-filter:blur(8px);
+    background:rgba(11,13,16,.82); border-bottom:1px solid var(--border);
+    padding:14px 22px; display:flex; flex-wrap:wrap; gap:6px 18px; align-items:baseline; }
+  header.top h1 { font-size:18px; margin:0 14px 0 0; }
+  header.top .badge { color:#0b0d10; background:var(--accent); font-weight:700;
+    border-radius:6px; padding:2px 8px; font-size:12px; }
+  nav { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:13px; }
+  nav a { color:var(--dim); text-decoration:none; }
+  nav a:hover { color:var(--accent); }
+  main { max-width:1040px; margin:0 auto; padding:10px 22px 80px; }
+  section { margin:34px 0; }
+  h2 { font-size:22px; margin:0 0 4px; }
+  h2 .n { color:var(--accent); font-variant-numeric:tabular-nums; margin-right:8px; }
+  .lead { color:var(--dim); margin:0 0 16px; max-width:76ch; }
+  .card { background:var(--panel); border:1px solid var(--border);
+    border-radius:14px; padding:16px; overflow:hidden; }
+  svg { display:block; width:100%; height:auto; }
+  .legend { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:12px;
+    font-size:12.5px; color:var(--dim); }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .sw { width:12px; height:12px; border-radius:3px; border:1px solid var(--border); display:inline-block; }
+  .facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+    gap:12px; margin-top:8px; }
+  .fact { background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+  .fact .k { font-size:12px; color:var(--dim); text-transform:uppercase; letter-spacing:.04em; }
+  .fact .v { font-size:15px; margin-top:3px; word-break:break-word; }
+  .fact .v a { word-break:break-all; }
+  code { background:var(--panel2); border:1px solid var(--border); border-radius:5px;
+    padding:1px 5px; font-size:.86em; }
+  footer { color:var(--dim); font-size:12.5px; border-top:1px solid var(--border);
+    margin-top:40px; padding-top:16px; }
+  /* SVG theming */
+  svg text { fill:var(--text); font-size:13px; }
+  svg .t-sm { font-size:11.5px; }
+  svg .t-dim { fill:var(--dim); }
+  svg .t-mono { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:11.5px; }
+  svg .t-title { font-weight:700; font-size:13.5px; }
+  svg .box { fill:var(--panel2); stroke:var(--border); stroke-width:1.5; }
+  svg .accent { fill:#0f2a1c; stroke:var(--accent); stroke-width:1.5; }
+  svg .blue { fill:#10233a; stroke:var(--blue); stroke-width:1.5; }
+  svg .purple { fill:#20183020; fill:#1d1630; stroke:var(--purple); stroke-width:1.5; }
+  svg .amber { fill:#2a2213; stroke:var(--amber); stroke-width:1.5; }
+  svg .zone { fill:#ffffff06; stroke:var(--border); stroke-width:1.5; stroke-dasharray:5 5; }
+  svg .dash { stroke-dasharray:5 4; }
+  svg .edge { stroke:#5b6670; stroke-width:1.7; fill:none; }
+  svg .edge-accent { stroke:var(--accent); stroke-width:1.7; fill:none; }
+  svg .elabel { fill:var(--dim); font-size:11.5px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>DocScanner <span class="badge">Architecture</span></h1>
+  <nav>
+    <a href="#facts">Overview</a>
+    <a href="#runtime">Runtime</a>
+    <a href="#deploy">Build &amp; Deploy</a>
+    <a href="#flow">Screen flow</a>
+    <a href="#pipeline">Scan pipeline</a>
+    <a href="#detect">Auto-crop</a>
+    <a href="#data">Data model</a>
+    <a href="#modules">Modules</a>
+    <a href="#migrate">Account migration</a>
+  </nav>
+</header>
+
+<main>
+  <section id="facts">
+    <h2><span class="n">—</span>DocScanner at a glance</h2>
+    <p class="lead">A browser-based document scanner (like CamScanner, no watermark).
+      100% client-side — no backend, no accounts, no API keys. Scanned documents live
+      in the browser's own IndexedDB. This page is fully offline; keep it with the repo.</p>
+    <div class="facts">
+      <div class="fact"><div class="k">Live URL</div><div class="v"><a href="https://docscanner-7lj.pages.dev">docscanner-7lj.pages.dev</a></div></div>
+      <div class="fact"><div class="k">Repo</div><div class="v"><a href="https://github.com/polxvii/docscanner">github.com/polxvii/docscanner</a></div></div>
+      <div class="fact"><div class="k">Hosting</div><div class="v">Cloudflare Pages — auto-build on <code>git push</code></div></div>
+      <div class="fact"><div class="k">Stack</div><div class="v">React 18 · Vite 6 · idb · (lazy) jsPDF / pdf.js / Tesseract</div></div>
+      <div class="fact"><div class="k">Image engine</div><div class="v">Pure JS / canvas — no OpenCV</div></div>
+      <div class="fact"><div class="k">Secrets in app</div><div class="v">None — nothing to migrate but repo + host</div></div>
+    </div>
+  </section>
+
+  <!-- 1. RUNTIME -->
+  <section id="runtime">
+    <h2><span class="n">1</span>Runtime — everything in the browser</h2>
+    <p class="lead">There is no server. React drives the UI; a single store wraps all
+      state and IndexedDB writes; the imaging engine does every pixel operation on
+      canvas. Heavy libraries are code-split and fetched only on first use.</p>
+    <div class="card">
+      <svg viewBox="0 0 980 360" role="img" aria-label="Runtime architecture">
+        <!-- browser zone -->
+        <rect class="zone" x="12" y="14" width="760" height="332" rx="14"/>
+        <text class="t-title" x="30" y="40">User's browser — the entire app</text>
+
+        <!-- React UI -->
+        <rect class="accent" x="30" y="58" width="210" height="72" rx="10"/>
+        <text class="t-title" x="46" y="86">React UI</text>
+        <text class="t-sm t-dim" x="46" y="106">components/ — screens,</text>
+        <text class="t-sm t-dim" x="46" y="121">modals, annotation layer</text>
+
+        <!-- Store -->
+        <rect class="blue" x="30" y="166" width="210" height="80" rx="10"/>
+        <text class="t-title" x="46" y="194">State — StoreContext</text>
+        <text class="t-sm t-dim" x="46" y="214">folders · documents ·</text>
+        <text class="t-sm t-dim" x="46" y="229">signatures · quota guard</text>
+
+        <!-- Imaging -->
+        <rect class="box" x="286" y="58" width="236" height="72" rx="10"/>
+        <text class="t-title" x="302" y="86">Imaging engine</text>
+        <text class="t-sm t-dim" x="302" y="106">imaging.js — warp, filters,</text>
+        <text class="t-sm t-dim" x="302" y="121">adjust, auto-detect (canvas)</text>
+
+        <!-- lib logic -->
+        <rect class="box" x="286" y="166" width="236" height="80" rx="10"/>
+        <text class="t-title" x="302" y="194">App logic (lib/)</text>
+        <text class="t-sm t-dim" x="302" y="214">annotations · exporter ·</text>
+        <text class="t-sm t-dim" x="302" y="229">pdf · backup · ocr</text>
+
+        <!-- lazy chunks -->
+        <rect class="purple dash" x="570" y="58" width="180" height="44" rx="8"/>
+        <text class="t-sm" x="586" y="78">jsPDF + html2canvas</text>
+        <text class="t-sm t-dim" x="586" y="93">PDF export</text>
+        <rect class="purple dash" x="570" y="114" width="180" height="44" rx="8"/>
+        <text class="t-sm" x="586" y="134">pdfjs-dist</text>
+        <text class="t-sm t-dim" x="586" y="149">import PDF → images</text>
+        <rect class="purple dash" x="570" y="170" width="180" height="44" rx="8"/>
+        <text class="t-sm" x="586" y="190">tesseract.js</text>
+        <text class="t-sm t-dim" x="586" y="205">OCR (tha+eng)</text>
+        <text class="elabel" x="570" y="232">▲ lazy — fetched on first use</text>
+
+        <!-- IndexedDB cylinder -->
+        <g>
+          <path class="amber" d="M812 92 a78 18 0 0 0 156 0 v150 a78 18 0 0 1 -156 0 z"/>
+          <ellipse class="amber" cx="890" cy="92" rx="78" ry="18"/>
+          <text class="t-title" x="890" y="88" text-anchor="middle">IndexedDB</text>
+          <text class="t-sm t-dim" x="890" y="150" text-anchor="middle">docscanner v1</text>
+          <text class="t-mono" x="890" y="176" text-anchor="middle">folders</text>
+          <text class="t-mono" x="890" y="196" text-anchor="middle">documents</text>
+          <text class="t-mono" x="890" y="216" text-anchor="middle">signatures</text>
+        </g>
+
+        <!-- edges -->
+        <defs>
+          <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#5b6670"/>
+          </marker>
+          <marker id="arrA" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#00e676"/>
+          </marker>
+        </defs>
+        <line class="edge" x1="135" y1="130" x2="135" y2="164" marker-end="url(#arr)"/>
+        <line class="edge" x1="240" y1="94" x2="284" y2="94" marker-end="url(#arr)"/>
+        <line class="edge" x1="240" y1="206" x2="284" y2="206" marker-end="url(#arr)"/>
+        <line class="edge" x1="522" y1="206" x2="566" y2="90" marker-end="url(#arr)"/>
+        <line class="edge" x1="522" y1="200" x2="566" y2="136" marker-end="url(#arr)"/>
+        <line class="edge" x1="522" y1="210" x2="566" y2="190" marker-end="url(#arr)"/>
+        <line class="edge-accent" x1="240" y1="210" x2="810" y2="210" marker-end="url(#arrA)"/>
+        <text class="elabel" x="560" y="258">StoreContext ⇄ IndexedDB (read on load · write on change)</text>
+      </svg>
+      <div class="legend">
+        <span><i class="sw" style="background:#0f2a1c;border-color:#00e676"></i>UI</span>
+        <span><i class="sw" style="background:#10233a;border-color:#4aa3ff"></i>State</span>
+        <span><i class="sw" style="background:#1b2128"></i>Logic / imaging</span>
+        <span><i class="sw" style="background:#1d1630;border-color:#b78cff"></i>Lazy chunk</span>
+        <span><i class="sw" style="background:#2a2213;border-color:#ffb74d"></i>Persistence</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. DEPLOY -->
+  <section id="deploy">
+    <h2><span class="n">2</span>Build &amp; deploy</h2>
+    <p class="lead">A static Vite build (<code>dist/</code>) served over HTTPS by Cloudflare
+      Pages. HTTPS is what lets the camera work on phones. Pushing to <code>main</code> is
+      the whole deploy step.</p>
+    <div class="card">
+      <svg viewBox="0 0 980 150" role="img" aria-label="Deploy pipeline">
+        <defs>
+          <marker id="arr2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#00e676"/>
+          </marker>
+        </defs>
+        <rect class="box" x="8"   y="46" width="150" height="58" rx="10"/>
+        <text class="t-title" x="83" y="70" text-anchor="middle">Local</text>
+        <text class="t-sm t-dim" x="83" y="89" text-anchor="middle">npm run dev / build</text>
+
+        <rect class="box" x="214" y="46" width="150" height="58" rx="10"/>
+        <text class="t-title" x="289" y="70" text-anchor="middle">GitHub repo</text>
+        <text class="t-sm t-dim" x="289" y="89" text-anchor="middle">main branch</text>
+
+        <rect class="accent" x="420" y="38" width="176" height="74" rx="10"/>
+        <text class="t-title" x="508" y="62" text-anchor="middle">Cloudflare Pages</text>
+        <text class="t-sm t-dim" x="508" y="80" text-anchor="middle">npm run build</text>
+        <text class="t-sm t-dim" x="508" y="95" text-anchor="middle">output: dist/</text>
+
+        <rect class="blue" x="652" y="46" width="150" height="58" rx="10"/>
+        <text class="t-title" x="727" y="70" text-anchor="middle">HTTPS site</text>
+        <text class="t-sm t-dim" x="727" y="89" text-anchor="middle">*.pages.dev</text>
+
+        <rect class="box" x="858" y="46" width="114" height="58" rx="10"/>
+        <text class="t-title" x="915" y="70" text-anchor="middle">Phone</text>
+        <text class="t-sm t-dim" x="915" y="89" text-anchor="middle">Add to Home</text>
+
+        <line class="edge-accent" x1="158" y1="75" x2="212" y2="75" marker-end="url(#arr2)"/>
+        <text class="elabel" x="166" y="40">git push</text>
+        <line class="edge-accent" x1="364" y1="75" x2="418" y2="75" marker-end="url(#arr2)"/>
+        <text class="elabel" x="372" y="40">on push</text>
+        <line class="edge-accent" x1="596" y1="75" x2="650" y2="75" marker-end="url(#arr2)"/>
+        <line class="edge-accent" x1="802" y1="75" x2="856" y2="75" marker-end="url(#arr2)"/>
+      </svg>
+      <p class="lead" style="margin:10px 0 0">Alternative path: a ready
+        GitHub Actions workflow (<code>.github/workflows/deploy.yml</code>) deploys via
+        Wrangler using repo secrets <code>CLOUDFLARE_API_TOKEN</code> and
+        <code>CLOUDFLARE_ACCOUNT_ID</code>. Use one path or the other — see §Account migration.</p>
+    </div>
+  </section>
+
+  <!-- 3. SCREEN FLOW -->
+  <section id="flow">
+    <h2><span class="n">3</span>Screen flow</h2>
+    <p class="lead">One <code>nav</code> state in <code>App.jsx</code> (no router). A transient
+      <code>draft</code> carries an in-progress scan through crop → filter. Re-editing a page
+      reopens crop with the original image + stored corners, so edits are non-destructive.</p>
+    <div class="card">
+      <svg viewBox="0 0 980 300" role="img" aria-label="Screen navigation">
+        <defs>
+          <marker id="arr3" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#5b6670"/>
+          </marker>
+        </defs>
+        <!-- library -->
+        <rect class="accent" x="20" y="120" width="150" height="60" rx="10"/>
+        <text class="t-title" x="95" y="146" text-anchor="middle">library</text>
+        <text class="t-sm t-dim" x="95" y="164" text-anchor="middle">folders + docs</text>
+        <!-- camera -->
+        <rect class="box" x="230" y="30" width="140" height="56" rx="10"/>
+        <text class="t-title" x="300" y="55" text-anchor="middle">camera</text>
+        <text class="t-sm t-dim" x="300" y="72" text-anchor="middle">capture / focus</text>
+        <!-- crop -->
+        <rect class="box" x="430" y="30" width="140" height="56" rx="10"/>
+        <text class="t-title" x="500" y="55" text-anchor="middle">crop</text>
+        <text class="t-sm t-dim" x="500" y="72" text-anchor="middle">warp de-skew</text>
+        <!-- filter -->
+        <rect class="box" x="630" y="30" width="140" height="56" rx="10"/>
+        <text class="t-title" x="700" y="55" text-anchor="middle">filter</text>
+        <text class="t-sm t-dim" x="700" y="72" text-anchor="middle">+ adjust</text>
+        <!-- editor -->
+        <rect class="blue" x="430" y="150" width="150" height="60" rx="10"/>
+        <text class="t-title" x="505" y="176" text-anchor="middle">editor</text>
+        <text class="t-sm t-dim" x="505" y="194" text-anchor="middle">page grid</text>
+        <!-- page detail -->
+        <rect class="box" x="650" y="150" width="160" height="60" rx="10"/>
+        <text class="t-title" x="730" y="176" text-anchor="middle">PageDetail</text>
+        <text class="t-sm t-dim" x="730" y="194" text-anchor="middle">annotate · OCR · swipe</text>
+
+        <!-- edges -->
+        <line class="edge" x1="170" y1="140" x2="228" y2="70" marker-end="url(#arr3)"/>
+        <text class="elabel" x="150" y="108">New scan</text>
+        <line class="edge" x1="370" y1="58" x2="428" y2="58" marker-end="url(#arr3)"/>
+        <line class="edge" x1="570" y1="58" x2="628" y2="58" marker-end="url(#arr3)"/>
+        <line class="edge" x1="700" y1="86" x2="560" y2="150" marker-end="url(#arr3)"/>
+        <text class="elabel" x="610" y="124">done → commit page</text>
+        <line class="edge" x1="170" y1="160" x2="428" y2="178" marker-end="url(#arr3)"/>
+        <text class="elabel" x="210" y="196">Open document</text>
+        <line class="edge" x1="580" y1="180" x2="648" y2="180" marker-end="url(#arr3)"/>
+        <!-- upload / pdf into crop/editor -->
+        <line class="edge dash" x1="95" y1="120" x2="95" y2="250" marker-end="url(#arr3)"/>
+        <path class="edge dash" d="M95 250 H500 V88" marker-end="url(#arr3)"/>
+        <text class="elabel" x="150" y="268">Upload image → crop</text>
+        <path class="edge dash" d="M120 250 H505 V212" marker-end="url(#arr3)"/>
+        <text class="elabel" x="360" y="268">Import PDF → editor (pages added)</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- 4. SCAN PIPELINE -->
+  <section id="pipeline">
+    <h2><span class="n">4</span>Scan → store → export pipeline</h2>
+    <p class="lead">How an image becomes a stored page and then an export. Each page keeps its
+      original + corners + filter for re-editing; <code>processedImage</code> is what you see
+      and what gets composited with annotations at export.</p>
+    <div class="card">
+      <svg viewBox="0 0 980 230" role="img" aria-label="Scan pipeline">
+        <defs>
+          <marker id="arr4" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#00e676"/>
+          </marker>
+        </defs>
+        <!-- inputs -->
+        <rect class="box" x="10" y="20" width="150" height="46" rx="9"/>
+        <text class="t-sm" x="85" y="42" text-anchor="middle">Camera capture</text>
+        <text class="t-sm t-dim" x="85" y="57" text-anchor="middle">JPEG 0.95</text>
+        <rect class="box" x="10" y="92" width="150" height="46" rx="9"/>
+        <text class="t-sm" x="85" y="114" text-anchor="middle">Gallery upload</text>
+        <rect class="box" x="10" y="164" width="150" height="46" rx="9"/>
+        <text class="t-sm" x="85" y="186" text-anchor="middle">PDF import</text>
+        <text class="t-sm t-dim" x="85" y="201" text-anchor="middle">pdf.js → images</text>
+
+        <!-- crop/warp -->
+        <rect class="box" x="220" y="56" width="150" height="60" rx="10"/>
+        <text class="t-sm" x="295" y="80" text-anchor="middle">Crop + warp</text>
+        <text class="t-sm t-dim" x="295" y="97" text-anchor="middle">de-skew, cap 2600px</text>
+
+        <!-- filter/adjust -->
+        <rect class="box" x="420" y="56" width="150" height="60" rx="10"/>
+        <text class="t-sm" x="495" y="80" text-anchor="middle">Filter + adjust</text>
+        <text class="t-sm t-dim" x="495" y="97" text-anchor="middle">+ ✨ Enhance</text>
+
+        <!-- stored -->
+        <rect class="amber" x="620" y="48" width="160" height="76" rx="10"/>
+        <text class="t-title" x="700" y="72" text-anchor="middle">Document.pages[]</text>
+        <text class="t-sm t-dim" x="700" y="90" text-anchor="middle">processedImage +</text>
+        <text class="t-sm t-dim" x="700" y="105" text-anchor="middle">original + corners</text>
+
+        <!-- export -->
+        <rect class="accent" x="830" y="48" width="140" height="76" rx="10"/>
+        <text class="t-title" x="900" y="72" text-anchor="middle">Export</text>
+        <text class="t-sm t-dim" x="900" y="90" text-anchor="middle">compose + annots</text>
+        <text class="t-sm t-dim" x="900" y="105" text-anchor="middle">PDF / JPG / PNG</text>
+
+        <line class="edge-accent" x1="160" y1="43" x2="218" y2="76" marker-end="url(#arr4)"/>
+        <line class="edge-accent" x1="160" y1="114" x2="218" y2="92" marker-end="url(#arr4)"/>
+        <path class="edge-accent" d="M160 187 H420 V116" marker-end="url(#arr4)"/>
+        <text class="elabel" x="250" y="205">PDF pages skip crop (added straight to the document)</text>
+        <line class="edge-accent" x1="370" y1="86" x2="418" y2="86" marker-end="url(#arr4)"/>
+        <line class="edge-accent" x1="570" y1="86" x2="618" y2="86" marker-end="url(#arr4)"/>
+        <line class="edge-accent" x1="780" y1="86" x2="828" y2="86" marker-end="url(#arr4)"/>
+      </svg>
+    </div>
+  </section>
+
+  <!-- 5. AUTO-DETECT -->
+  <section id="detect">
+    <h2><span class="n">5</span>Auto-crop — tilt-aware corner detection</h2>
+    <p class="lead"><code>autoDetectCorners()</code> is a self-validating cascade. It returns the
+      first method that yields a plausible quad; a blob's corners are its diagonal extremes
+      (min/max of x±y), giving a real tilted quadrilateral — not just an axis box.</p>
+    <div class="card">
+      <svg viewBox="0 0 980 240" role="img" aria-label="Auto-detect cascade">
+        <defs>
+          <marker id="arr5" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#5b6670"/>
+          </marker>
+          <marker id="arr5g" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#00e676"/>
+          </marker>
+        </defs>
+        <!-- method 1 -->
+        <rect class="box" x="20" y="40" width="200" height="80" rx="10"/>
+        <text class="t-title" x="36" y="66">1 · Colour flood</text>
+        <text class="t-sm t-dim" x="36" y="86">fill backdrop from border,</text>
+        <text class="t-sm t-dim" x="36" y="102">stop at the sharp page edge</text>
+        <!-- method 2 -->
+        <rect class="box" x="300" y="40" width="200" height="80" rx="10"/>
+        <text class="t-title" x="316" y="66">2 · Otsu + border</text>
+        <text class="t-sm t-dim" x="316" y="86">class hugging the border</text>
+        <text class="t-sm t-dim" x="316" y="102">= background; other = page</text>
+        <!-- method 3 -->
+        <rect class="box" x="580" y="40" width="200" height="80" rx="10"/>
+        <text class="t-title" x="596" y="66">3 · Projection box</text>
+        <text class="t-sm t-dim" x="596" y="86">axis-aligned fallback</text>
+        <text class="t-sm t-dim" x="596" y="102">(last resort)</text>
+        <!-- result -->
+        <rect class="accent" x="820" y="40" width="140" height="80" rx="10"/>
+        <text class="t-title" x="890" y="72" text-anchor="middle">Corners</text>
+        <text class="t-sm t-dim" x="890" y="92" text-anchor="middle">[TL,TR,BR,BL]</text>
+
+        <!-- plausible? gates -->
+        <line class="edge-accent" x1="120" y1="120" x2="120" y2="170" marker-end="url(#arr5g)"/>
+        <text class="elabel" x="130" y="150">plausible → use</text>
+        <line class="edge" x1="220" y1="80" x2="298" y2="80" marker-end="url(#arr5)"/>
+        <text class="elabel" x="224" y="34">leaks →</text>
+        <line class="edge-accent" x1="400" y1="120" x2="400" y2="170" marker-end="url(#arr5g)"/>
+        <text class="elabel" x="410" y="150">plausible → use</text>
+        <line class="edge" x1="500" y1="80" x2="578" y2="80" marker-end="url(#arr5)"/>
+        <text class="elabel" x="505" y="34">fails →</text>
+        <line class="edge" x1="780" y1="80" x2="818" y2="80" marker-end="url(#arr5)"/>
+
+        <path class="edge-accent" d="M120 170 H890 V122" marker-end="url(#arr5g)"/>
+        <path class="edge-accent" d="M400 170 H890" />
+        <text class="elabel" x="300" y="190">any method that passes the plausibility check flows to the result</text>
+      </svg>
+      <div class="legend">
+        <span>Verified on synthetic scenes (real module, in-browser): tilted 18° light-on-dark,
+          straight, dark-on-white, tilted 30° on colour — mean corner error ≤ 0.004 (normalised).</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. DATA MODEL -->
+  <section id="data">
+    <h2><span class="n">6</span>Data model</h2>
+    <p class="lead">Three IndexedDB stores. Images are base64 data URLs embedded in the records.
+      Annotation positions are ratios (0–1) of the page's image rect, so they map correctly into
+      any export size.</p>
+    <div class="card">
+      <svg viewBox="0 0 980 330" role="img" aria-label="Data model">
+        <defs>
+          <marker id="arr6" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L8,3 L0,6 Z" fill="#5b6670"/>
+          </marker>
+        </defs>
+        <!-- Folder -->
+        <rect class="amber" x="20" y="30" width="190" height="90" rx="10"/>
+        <text class="t-title" x="36" y="54">Folder</text>
+        <text class="t-mono t-dim" x="36" y="76">id · name</text>
+        <text class="t-mono t-dim" x="36" y="94">createdAt</text>
+
+        <!-- Document -->
+        <rect class="amber" x="300" y="20" width="220" height="140" rx="10"/>
+        <text class="t-title" x="316" y="44">Document</text>
+        <text class="t-mono t-dim" x="316" y="66">id · folderId · name</text>
+        <text class="t-mono t-dim" x="316" y="84">createdAt · updatedAt</text>
+        <text class="t-mono t-dim" x="316" y="102">thumbnail</text>
+        <text class="t-mono t-dim" x="316" y="120">pages[] · annotations[]</text>
+
+        <!-- Page -->
+        <rect class="box" x="620" y="10" width="250" height="120" rx="10"/>
+        <text class="t-title" x="636" y="34">Page</text>
+        <text class="t-mono t-dim" x="636" y="56">id</text>
+        <text class="t-mono t-dim" x="636" y="74">originalImage · cropCorners</text>
+        <text class="t-mono t-dim" x="636" y="92">filter</text>
+        <text class="t-mono t-dim" x="636" y="110">processedImage</text>
+
+        <!-- Annotation -->
+        <rect class="box" x="620" y="162" width="250" height="140" rx="10"/>
+        <text class="t-title" x="636" y="186">Annotation</text>
+        <text class="t-mono t-dim" x="636" y="208">id · type(text|sig|image)</text>
+        <text class="t-mono t-dim" x="636" y="226">x · y · width · height (0–1)</text>
+        <text class="t-mono t-dim" x="636" y="244">rotation · opacity</text>
+        <text class="t-mono t-dim" x="636" y="262">scope(document|pages|page)</text>
+        <text class="t-mono t-dim" x="636" y="280">content { text|dataUrl }</text>
+
+        <!-- Signature -->
+        <rect class="box" x="300" y="210" width="220" height="92" rx="10"/>
+        <text class="t-title" x="316" y="234">Signature</text>
+        <text class="t-mono t-dim" x="316" y="256">id · name</text>
+        <text class="t-mono t-dim" x="316" y="274">dataUrl · createdAt</text>
+        <text class="t-sm t-dim" x="316" y="294">reusable tray</text>
+
+        <!-- relations -->
+        <line class="edge" x1="210" y1="75" x2="298" y2="80" marker-end="url(#arr6)"/>
+        <text class="elabel" x="214" y="68">1 → *</text>
+        <line class="edge" x1="520" y1="70" x2="618" y2="70" marker-end="url(#arr6)"/>
+        <text class="elabel" x="534" y="60">1 → * pages</text>
+        <line class="edge" x1="520" y1="120" x2="618" y2="210" marker-end="url(#arr6)"/>
+        <text class="elabel" x="524" y="150">1 → * annotations</text>
+        <path class="edge dash" d="M520 256 H560 V250 H618" marker-end="url(#arr6)"/>
+        <text class="elabel" x="470" y="200">signature dataUrl → annotation.content</text>
+      </svg>
+      <div class="legend">
+        <span><i class="sw" style="background:#2a2213;border-color:#ffb74d"></i>Top-level store record</span>
+        <span><i class="sw" style="background:#1b2128"></i>Embedded in a document</span>
+        <span>Folder, Document, Signature are the three stores; Page &amp; Annotation live inside Document.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. MODULES -->
+  <section id="modules">
+    <h2><span class="n">7</span>Module map</h2>
+    <p class="lead">Components do UI; <code>lib/</code> is framework-free logic (unit-testable in
+      isolation); the store is the only thing that touches IndexedDB.</p>
+    <div class="card">
+      <svg viewBox="0 0 980 300" role="img" aria-label="Module dependencies">
+        <defs>
+          <marker id="arr7" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#5b6670"/>
+          </marker>
+        </defs>
+        <!-- components group -->
+        <rect class="zone" x="12" y="20" width="300" height="260" rx="12"/>
+        <text class="t-title" x="28" y="44">components/</text>
+        <text class="t-mono t-sm" x="28" y="72">CameraView · CropScreen</text>
+        <text class="t-mono t-sm" x="28" y="94">FilterScreen · DocumentEditor</text>
+        <text class="t-mono t-sm" x="28" y="116">PageDetail · AnnotationLayer</text>
+        <text class="t-mono t-sm" x="28" y="138">SignatureManager · ExportDialog</text>
+        <text class="t-mono t-sm" x="28" y="160">LibraryScreen · ImportingOverlay</text>
+        <text class="t-mono t-sm" x="28" y="182">Modal · Spinner · PromptModal</text>
+        <text class="t-sm t-dim" x="28" y="214">hooks/ usePinchZoom</text>
+
+        <!-- store -->
+        <rect class="blue" x="372" y="110" width="200" height="80" rx="10"/>
+        <text class="t-title" x="388" y="138">store/StoreContext</text>
+        <text class="t-sm t-dim" x="388" y="158">global state +</text>
+        <text class="t-sm t-dim" x="388" y="174">all IndexedDB writes</text>
+
+        <!-- lib group -->
+        <rect class="zone" x="632" y="20" width="336" height="200" rx="12"/>
+        <text class="t-title" x="648" y="44">lib/ (framework-free)</text>
+        <text class="t-mono t-sm" x="648" y="72">imaging · geometry · id</text>
+        <text class="t-mono t-sm" x="648" y="94">annotations · exporter</text>
+        <text class="t-mono t-sm" x="648" y="116">pdf · backup · signature · ocr</text>
+        <text class="t-mono t-sm" x="648" y="138">db (IndexedDB wrapper)</text>
+
+        <!-- lazy -->
+        <rect class="purple dash" x="648" y="156" width="304" height="46" rx="8"/>
+        <text class="t-sm" x="664" y="176">lazy: jsPDF · pdfjs-dist · tesseract.js</text>
+        <text class="t-sm t-dim" x="664" y="192">imported on demand by exporter / pdf / ocr</text>
+
+        <!-- edges -->
+        <line class="edge" x1="312" y1="150" x2="370" y2="150" marker-end="url(#arr7)"/>
+        <text class="elabel" x="312" y="140">use</text>
+        <line class="edge" x1="312" y1="110" x2="646" y2="100" marker-end="url(#arr7)"/>
+        <text class="elabel" x="430" y="92">import logic</text>
+        <line class="edge" x1="572" y1="150" x2="646" y2="130" marker-end="url(#arr7)"/>
+        <text class="elabel" x="560" y="176">store → db</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- 8. MIGRATION -->
+  <section id="migrate">
+    <h2><span class="n">8</span>Changing accounts (GitHub / Cloudflare)</h2>
+    <p class="lead">Nothing in the code is account-bound and there are no secrets in the app, so a
+      move is just: re-point the Git remote, then connect the new host. Full details in
+      <code>docs/ARCHITECTURE.md</code> §10 and <code>DEPLOY.md</code>.</p>
+    <div class="card">
+      <svg viewBox="0 0 980 220" role="img" aria-label="Account migration steps">
+        <defs>
+          <marker id="arr8" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#00e676"/>
+          </marker>
+        </defs>
+        <rect class="accent" x="20" y="60" width="210" height="96" rx="10"/>
+        <text class="t-title" x="36" y="88">A · New GitHub repo</text>
+        <text class="t-sm t-dim" x="36" y="110">create empty repo, then</text>
+        <text class="t-mono t-sm" x="36" y="128">git remote set-url origin …</text>
+        <text class="t-mono t-sm" x="36" y="146">git push -u origin main</text>
+
+        <rect class="accent" x="290" y="60" width="230" height="96" rx="10"/>
+        <text class="t-title" x="306" y="88">B · Connect Cloudflare</text>
+        <text class="t-sm t-dim" x="306" y="110">Pages → Connect to Git →</text>
+        <text class="t-sm t-dim" x="306" y="128">build npm run build, out dist,</text>
+        <text class="t-sm t-dim" x="306" y="146">NODE_VERSION = 20</text>
+
+        <rect class="box" x="580" y="60" width="180" height="96" rx="10"/>
+        <text class="t-title" x="596" y="88">B′ · or CI secrets</text>
+        <text class="t-sm t-dim" x="596" y="110">if using Actions:</text>
+        <text class="t-mono t-sm" x="596" y="128">CLOUDFLARE_API_TOKEN</text>
+        <text class="t-mono t-sm" x="596" y="146">CLOUDFLARE_ACCOUNT_ID</text>
+
+        <rect class="amber" x="800" y="60" width="160" height="96" rx="10"/>
+        <text class="t-title" x="816" y="88">Users' data</text>
+        <text class="t-sm t-dim" x="816" y="110">stays in each browser</text>
+        <text class="t-sm t-dim" x="816" y="128">— carry via</text>
+        <text class="t-sm t-dim" x="816" y="146">Backup / Restore JSON</text>
+
+        <line class="edge-accent" x1="230" y1="108" x2="288" y2="108" marker-end="url(#arr8)"/>
+        <line class="edge-accent" x1="520" y1="108" x2="578" y2="108" marker-end="url(#arr8)"/>
+        <text class="elabel" x="300" y="180">Pick ONE host path: Cloudflare Git integration (B) OR GitHub Actions (B′).</text>
+      </svg>
+    </div>
+  </section>
+
+  <footer>
+    DocScanner — generated architecture overview. Offline &amp; self-contained.
+    Keep this file with the repo so a new owner has the full picture. Last updated 2026-10-15.
+  </footer>
+</main>
+</body>
+</html>

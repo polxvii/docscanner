@@ -1,9 +1,14 @@
 # DocScanner
 
 A browser-based document scanner (like CamScanner, **no watermark** on exports).
-Runs entirely client-side — no backend, no accounts. Built with React + Vite.
+Runs entirely client-side — no backend, no accounts, no API keys. Built with
+React + Vite.
 
-See [`scanner-app-spec.md`](./scanner-app-spec.md) for the full spec.
+- **Live:** https://docscanner-7lj.pages.dev
+- **Full architecture + handoff guide:** [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)
+- **Visual diagrams (offline HTML):** [`docs/architecture.html`](./docs/architecture.html)
+- **Original spec:** [`scanner-app-spec.md`](./scanner-app-spec.md)
+- **Deploy / change accounts:** [`DEPLOY.md`](./DEPLOY.md)
 
 ## Getting started
 
@@ -12,79 +17,88 @@ npm install
 npm run dev
 ```
 
-Then open the printed URL. The dev server is exposed on your LAN (`host: true`)
-so you can test the camera from a phone — but note:
+Open the printed URL. The dev server is exposed on your LAN (`host: true`) so you
+can test the camera from a phone — but note:
 
 > **The camera requires HTTPS or `localhost`.** Opening the LAN URL over plain
-> `http://<ip>` will block `getUserMedia`. For phone testing use a tunnel
-> (e.g. `ngrok`, `cloudflared`) or deploy to Netlify / Vercel / GitHub Pages.
+> `http://<ip>` blocks `getUserMedia`. For phone testing use a tunnel (ngrok,
+> cloudflared) or the deployed HTTPS URL.
 
 ```bash
-npm run build     # production build to dist/
+npm run build     # production build → dist/
 npm run preview   # serve the production build locally
 ```
 
+## Features
+
+- **Capture** — camera scan with **tap-to-focus**, gallery upload, or PDF import.
+- **Crop** — drag corner/edge handles, magnifier loupe, rotate, **tilt-aware
+  auto-detect**, pure-JS perspective de-skew.
+- **Enhance** — filters (Grayscale / B&W / Magic Color / Lighten) + intensity,
+  manual adjust (brightness / contrast / white balance / sharpness / clarity),
+  one-tap **✨ Enhance**, pinch-zoom.
+- **Organize** — folders, multi-page documents, 2-column grid, drag-reorder,
+  multi-select export/delete.
+- **Annotate** — text, signatures, overlaid images; drag / resize / rotate /
+  opacity; per-page or whole-document scope.
+- **Signatures** — draw or photograph, crop, remove background, reuse from a tray.
+- **OCR** — Tesseract, Thai + English, per page.
+- **Export** — no-watermark PDF (A4 / Letter / fit, portrait / landscape),
+  JPG / PNG; Web Share on mobile, download on desktop.
+- **Backup / Restore** — export all data to JSON and restore (merge or replace).
+- **PWA** — installable (Add to Home Screen). _No service worker yet, so it still
+  needs a network connection to load._
+
 ## Libraries
 
-| Library          | How it's loaded         | Used for                          |
-| ---------------- | ----------------------- | --------------------------------- |
-| jsPDF            | npm                     | PDF export                        |
-| Tesseract.js     | npm                     | OCR (`tha+eng`)                   |
-| idb              | npm                     | IndexedDB persistence             |
+| Library       | How it's loaded              | Used for               |
+| ------------- | ---------------------------- | ---------------------- |
+| idb           | bundled                      | IndexedDB persistence  |
+| jsPDF         | **lazy** chunk               | PDF export             |
+| pdfjs-dist    | **lazy** (dynamic import)    | PDF import → images    |
+| tesseract.js  | **lazy** (dynamic import)    | OCR (`tha+eng`)        |
 
-> **No OpenCV.** The perspective crop/warp and all filters are implemented in
-> plain JavaScript / canvas (`src/lib/imaging.js`). The 11MB OpenCV.js WASM
-> proved unreliable to load on real devices (it would hang on "Loading
-> detector"), so it was removed. The app now loads instantly and works on any
-> phone. Trade-off: no live auto edge-detection while aiming — instead you
-> capture, then drag a crop box (seeded by a lightweight pure-JS auto-detect)
-> onto the document.
+> **No OpenCV.** The perspective crop/warp, filters, and document auto-detect are
+> all plain JavaScript / canvas ([`src/lib/imaging.js`](./src/lib/imaging.js)).
+> The 11 MB OpenCV.js WASM hung on "Loading detector" on real phones, so it was
+> removed — the app now loads instantly. Trade-off: no live edge detection while
+> aiming; instead you capture, then adjust an auto-seeded (tilt-aware) crop box.
 
-## Build phases
+## How it works (quick tour)
 
-Implemented incrementally per the spec. All 11 phases built:
+- **No router.** `src/App.jsx` holds one `nav` state and switches screens:
+  `library → camera → crop → filter → editor`, with `PageDetail` for a single
+  page (annotations, OCR, swipe).
+- **One store.** `src/store/StoreContext.jsx` holds all state and is the only
+  code that writes to IndexedDB (stores: `folders`, `documents`, `signatures`).
+  Images are base64 data URLs embedded in the records. Writes catch
+  `QuotaExceededError` and surface a "storage full" modal.
+- **Pure-JS imaging.** `src/lib/imaging.js` — homography warp (bilinear), filters,
+  adjustments, and a self-validating auto-detect cascade (colour flood → Otsu +
+  border-class → projection box) that returns real **tilted** quads.
+- **Non-destructive.** Each page keeps its original image + crop corners + filter,
+  so re-editing re-runs the pipeline instead of degrading the result.
 
-- [x] **1. Project setup** — Vite + React, library loading, app runs.
-- [x] **2. Camera + capture** — live video, full-res capture, gallery upload,
-      framing guide. (Live OpenCV auto-detection removed — see note above.)
-- [x] **3. Crop & adjust** — draggable corner + edge handles, Auto Crop (pure-JS
-      detect) / All / rotate, pure-JS perspective warp on confirm.
-- [x] **4. Filters** — Original / Grayscale / B&W (adaptive threshold) / Magic
-      Color, with live previews.
-- [x] **5. Page viewer** — multi-page list, reorder (drag + arrows), delete,
-      non-destructive re-edit (originals + corners + filter kept).
-- [x] **6. Persistence** — IndexedDB via idb (documents, folders, signatures).
-- [x] **7. Library + folders** — folder chips, document grid, rename /
-      duplicate / delete.
-- [x] **8. Annotations** — text + signature, drag / resize / rotate, per-item
-      this-page / all-pages scope, ratio-based positions.
-- [x] **9. Signatures** — draw or upload, background removal with threshold +
-      softness sliders, save/reuse tray.
-- [x] **10. OCR** — Tesseract `tha+eng`, opt-in per page, progress indicator.
-- [x] **11. Export** — no-watermark PDF (A4 / Letter / fit, orientation),
-      JPG / PNG, Web Share with download fallback.
+See [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) for the full picture and the
+account-migration checklist, or open [`docs/architecture.html`](./docs/architecture.html)
+for the diagrams.
 
-### Verification status
+## Deploy
 
-Verified in-browser (this environment): library, folder create + IndexedDB
-persistence across reload, document load, page viewer, page detail, add text
-annotation (ratio storage + persistence), scope toggle, no-watermark PDF export
-with annotation compositing. Pure logic (coordinate mapping, signature alpha
-ramp, corner rotation) covered by Node tests.
+Static Vite build served by **Cloudflare Pages** over HTTPS; pushing to `main`
+auto-deploys. Full steps (and how to move to a different GitHub / Cloudflare
+account) are in [`DEPLOY.md`](./DEPLOY.md).
 
-Needs a real device (camera + OpenCV WASM don't run in the CI sandbox browser):
-live detection overlay, crop warp, filter apply, auto-crop, OCR, signature
-background-removal preview. Run `npm run dev` on `localhost` to exercise these.
+```bash
+git add -A
+git commit -m "describe change"
+git push          # Cloudflare rebuilds; refresh the phone ~1 min later
+```
 
-## Architecture notes (phase 2)
+## Verification
 
-Three coordinate spaces are kept explicit to avoid alignment bugs:
-
-1. **Video native** — `video.videoWidth × videoHeight`.
-2. **Detection** — a downscaled offscreen canvas (~300px wide). Detection runs
-   here only; corners are returned **normalised (0..1)**.
-3. **Display** — the `<video>` element's rendered size. The overlay maps
-   normalised corners into the letterboxed content rect (`object-fit: contain`).
-
-Every OpenCV `Mat` allocated in `src/lib/detectDocument.js` is released in a
-`finally` block — leaks crash long multi-page sessions.
+Pure logic (coordinate mapping, auto-detect cascade, filters, export compositing,
+tap-to-focus math) is verified by importing the real modules in a browser and
+asserting on outputs. Camera-dependent behaviour (live capture, hardware focus)
+needs a real device — iOS Safari ignores programmatic focus and autofocuses
+continuously, so the focus ring is a visual cue there.
